@@ -229,7 +229,7 @@ func (pg *postgres) UpdateProject(tx pgx.Tx, project Project) error {
 	return err
 }
 
-func (pg *postgres) UpdateProjectDownloads(tx pgx.Tx, projectId string, downloads uint64) error {
+func (pg *postgres) UpdateProjectDownloads(tx pgx.Tx, projectId string, downloads int) error {
 	_, err := tx.Exec(context.Background(), `UPDATE projects SET downloads = $1 WHERE id = $2`, downloads, projectId)
 	return err
 }

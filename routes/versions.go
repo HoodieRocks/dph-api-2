@@ -425,6 +425,20 @@ func downloadVersion(c echo.Context) error {
 	// Check the status of the project.
 	switch project.Status {
 	case "live":
+		tx, err := conn.Db.Begin(context.Background())
+		
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction")
+		}
+		
+		err = conn.UpdateProjectDownloads(tx, project.ID, project.Downloads+1)
+
+		if err != nil {
+			tx.Rollback(context.Background())
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to update project downloads")
+		}
+
+		tx.Commit(context.Background())
 		c.File(version.DownloadLink)
 		return nil
 	case "draft":

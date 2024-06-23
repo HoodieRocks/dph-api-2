@@ -15,32 +15,47 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
+
+// listProjects retrieves a list of projects from the database based on the provided query parameters.
+// It returns a JSON representation of the projects.
+// If the query parameters are invalid, it returns an internal server error.
 func listProjects(c echo.Context) error {
+	// Define the structure of the search results.
+	type SearchResults struct {
+		Time    float64         `json:"time"` // Search time in seconds
+		Count   int             `json:"count"`
+		Results []utils.Project `json:"results"`
+	}
+
+	// Establish a connection to the database
 	var conn = utils.EstablishConnection()
-	var page, err = strconv.Atoi(c.QueryParam("page"))
-	
+
+	var startTime = time.Now()
+
+	// Parse the query parameters for pagination
+	page, err := strconv.Atoi(c.QueryParam("page"))
 	if err != nil {
 		page = 0
 	}
-
 	limit, err := strconv.Atoi(c.QueryParam("limit"))
-
 	if err != nil {
 		limit = 25
 	}
+	offset := page * limit
 
-	var offset = page * limit
-
-
-	projects, err := conn.ListProjects(limit, offset, "downloads")
-
+	// Retrieve the projects from the database
+	results, err := conn.ListProjects(limit, offset, "downloads")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to fetch projects: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch projects")
 	}
 
-	c.JSON(http.StatusOK, projects)
-	return nil
+	// Return the projects as JSON
+	return c.JSON(http.StatusOK, SearchResults{
+		Time:    time.Since(startTime).Seconds(),
+		Count:   len(results),
+		Results: results,
+	})
 }
 
 // getProjectById retrieves a project from the database based on the provided ID.
