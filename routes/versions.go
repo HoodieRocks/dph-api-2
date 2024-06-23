@@ -426,11 +426,11 @@ func downloadVersion(c echo.Context) error {
 	switch project.Status {
 	case "live":
 		tx, err := conn.Db.Begin(context.Background())
-		
+
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction")
 		}
-		
+
 		err = conn.UpdateProjectDownloads(tx, project.ID, project.Downloads+1)
 
 		if err != nil {

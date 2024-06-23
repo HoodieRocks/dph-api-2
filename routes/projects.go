@@ -15,7 +15,6 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-
 // listProjects retrieves a list of projects from the database based on the provided query parameters.
 // It returns a JSON representation of the projects.
 // If the query parameters are invalid, it returns an internal server error.
