@@ -91,8 +91,7 @@ func getProjectById(c echo.Context) error {
 	switch project.Status {
 	case "live":
 		// If the project is live, return the project.
-		c.JSON(http.StatusOK, project)
-		return nil
+		return c.JSON(http.StatusOK, project)
 	case "draft":
 		// If the project is draft, check if the user is the owner and has a valid token.
 		owner, err := conn.GetUserById(project.Author)
@@ -122,8 +121,7 @@ func getProjectById(c echo.Context) error {
 
 		if user.Token == owner.Token {
 			// If the user is the owner, return the project.
-			c.JSON(http.StatusOK, project)
-			return nil
+			return c.JSON(http.StatusOK, project)
 		} else {
 			// If the user is not the owner, return a forbidden error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
@@ -168,8 +166,7 @@ func getProjectBySlug(c echo.Context) error {
 	switch project.Status {
 	case "live":
 		// If the project is live, return the project.
-		c.JSON(http.StatusOK, project)
-		return nil
+		return c.JSON(http.StatusOK, project)
 	case "draft":
 		// If the project is draft, check if the user is the owner and has a valid token.
 		owner, err := conn.GetUserById(project.Author)
@@ -364,8 +361,7 @@ func changeProjectStatus(c echo.Context) error {
 	tx.Commit(context.Background())
 
 	// Return a success message
-	c.String(http.StatusOK, "status updated")
-	return nil
+	return c.String(http.StatusOK, "status updated")
 }
 
 // ftsSearch handles the FTS search API endpoint.

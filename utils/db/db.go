@@ -52,7 +52,13 @@ func CreateTables(pg *postgres) {
 	)`)
 
 	if err != nil {
-		tx.Rollback(context.Background())
+		err = tx.Rollback(context.Background())
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err.Error())
+			panic(err)
+		}
+
 		fmt.Fprintf(os.Stderr, "failed to create user table: %v\n", err.Error())
 		panic(err)
 	}
@@ -75,7 +81,13 @@ func CreateTables(pg *postgres) {
 	)`)
 
 	if err != nil {
-		tx.Rollback(context.Background())
+		err = tx.Rollback(context.Background())
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err.Error())
+			panic(err)
+		}
+
 		fmt.Fprintf(os.Stderr, "failed to create project table: %v\n", err.Error())
 		panic(err)
 	}
@@ -94,10 +106,21 @@ func CreateTables(pg *postgres) {
 	)`)
 
 	if err != nil {
-		tx.Rollback(context.Background())
+		err = tx.Rollback(context.Background())
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err.Error())
+			panic(err)
+		}
+
 		fmt.Fprintf(os.Stderr, "failed to create version table: %v\n", err.Error())
 		panic(err)
 	}
 
-	tx.Commit(context.Background())
+	err = tx.Commit(context.Background())
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to commit: %v\n", err.Error())
+		panic(err)
+	}
 }

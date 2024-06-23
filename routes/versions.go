@@ -439,8 +439,7 @@ func downloadVersion(c echo.Context) error {
 		}
 
 		tx.Commit(context.Background())
-		c.File(version.DownloadLink)
-		return nil
+		return c.File(version.DownloadLink)
 	case "draft":
 		// Get the owner of the project.
 		owner, err := conn.GetUserById(project.Author)
@@ -481,8 +480,7 @@ func downloadVersion(c echo.Context) error {
 
 		// Check if the user is the owner of the project.
 		if user.Token == owner.Token {
-			c.File(version.DownloadLink)
-			return nil
+			return c.File(version.DownloadLink)
 		} else {
 			// If the user is not the owner, return a forbidden error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")

@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -34,6 +36,11 @@ func (pg *postgres) GetUserById(id string) (User, error) {
 	var user User
 
 	var row, err = pg.Db.Query(context.Background(), "SELECT * FROM users WHERE id = $1 LIMIT 1", id)
+
+	if err != nil {
+		return user, err
+	}
+
 	user, err = pgx.CollectOneRow(row, pgx.RowToStructByName[User])
 
 	return user, err
@@ -49,10 +56,21 @@ func (pg *postgres) ResetUserToken(id string) error {
 	user.Token = GenerateSecureToken()
 
 	tx, err := pg.Db.Begin(context.Background())
-	pg.UpdateUser(tx, user)
+	
+	if err != nil {
+		err = tx.Rollback(context.Background())
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err.Error())
+			return err
+		}
+
+		return err
+	}
+
+	err = pg.UpdateUser(tx, user)
 
 	if err != nil {
-		tx.Rollback(context.Background())
 		return err
 	}
 
@@ -64,6 +82,11 @@ func (pg *postgres) GetUserByToken(token string) (User, error) {
 	var user User
 
 	var row, err = pg.Db.Query(context.Background(), "SELECT * FROM users WHERE token = $1 LIMIT 1", token)
+
+	if err != nil {
+		return user, err
+	}
+
 	user, err = pgx.CollectOneRow(row, pgx.RowToStructByName[User])
 
 	return user, err
@@ -126,6 +149,15 @@ func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]
 		searchMethod,
 		trueLimit,
 		offset)
+
+	if err != nil {
+
+		if err == pgx.ErrNoRows {
+			return []Project{}, nil
+		}
+
+		return nil, err
+	}
 
 	projects, err := pgx.CollectRows(rows, pgx.RowToStructByName[Project])
 
