@@ -4,20 +4,16 @@ import (
 	"context"
 	"fmt"
 	"me/cobble/routes"
-	"me/cobble/utils/db"
+	utils "me/cobble/utils/db"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/swaggo/echo-swagger"
-
-	_ "me/cobble/docs"
 )
 
 func main() {
@@ -58,20 +54,14 @@ func startServer(ctx context.Context, wg *sync.WaitGroup) {
 
 	utils.CreateTables(conn)
 
-	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-		Skipper: func(c echo.Context) bool {
-			if strings.Contains(c.Request().URL.Path, "docs") {
-				return true
-			}
-			return false
-		},
-	}))
+	e.Use(middleware.Gzip())
+	e.Use(middleware.Decompress())
+	e.Use(middleware.Secure())
 
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Hello, World!")
 	})
 	e.Static("/files", "./files")
-	e.GET("/docs/*", echoSwagger.WrapHandler)
 
 	// register routes
 	routes.RegisterUserRoutes(e)

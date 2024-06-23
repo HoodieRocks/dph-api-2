@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/matoous/go-nanoid/v2"
+	gonanoid "github.com/matoous/go-nanoid/v2"
 )
 
 type postgres struct {
@@ -79,7 +79,7 @@ func (pg *postgres) CheckForUsernameConflict(username string) bool {
 
 func (pg *postgres) CreateUser(tx pgx.Tx, user User) error {
 
-	id, _ := gonanoid.New()
+	id, _ := gonanoid.New(12)
 
 	_, err := tx.Exec(context.Background(),
 		"INSERT INTO users (id, username, role, bio, join_date, password, token) VALUES ($1, $2, $3, $4, $5, $6, $7)",
@@ -110,10 +110,41 @@ func (pg *postgres) UpdateUser(tx pgx.Tx, user User) error {
 
 // ! PROJECTS
 
+func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]Project, error) {
+
+	var trueLimit = limit
+	if trueLimit > 100 {
+		trueLimit = 100
+	}
+
+	rows, err := pg.Db.Query(context.Background(),
+		`SELECT `+PROJECT_COLUMNS+`
+			FROM projects
+			WHERE status = 'live'
+			ORDER BY $1 DESC
+			LIMIT $2 OFFSET $3`,
+		searchMethod,
+		trueLimit,
+		offset)
+
+	projects, err := pgx.CollectRows(rows, pgx.RowToStructByName[Project])
+
+	return projects, err
+}
+
 func (pg *postgres) GetProjectByID(id string) (Project, error) {
 	var project Project
 
 	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE id = $1 LIMIT 1`, id)
+	project, err = pgx.CollectOneRow(row, pgx.RowToStructByName[Project])
+
+	return project, err
+}
+
+func (pg *postgres) GetProjectBySlug(slug string) (Project, error) {
+	var project Project
+
+	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE slug = $1 LIMIT 1`, slug)
 	project, err = pgx.CollectOneRow(row, pgx.RowToStructByName[Project])
 
 	return project, err
@@ -132,6 +163,14 @@ func (pg *postgres) SearchProjects(query string) (pgx.Rows, error) {
 			slug LIKE $1
 		) AND status = 'live' LIMIT 100`, "%"+query+"%")
 	return rows, err
+}
+
+func (pg *postgres) CheckForProjectNameConflict(title string, slug string) bool {
+
+	var rowLen = 0
+	var err = pg.Db.QueryRow(context.Background(), "SELECT count(*) FROM projects WHERE title = LOWER($1) OR slug = LOWER($2)", title, slug).Scan(&rowLen)
+
+	return err == pgx.ErrNoRows || rowLen > 0
 }
 
 func (pg *postgres) CreateProject(tx pgx.Tx, project Project) error {

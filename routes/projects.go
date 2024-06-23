@@ -6,6 +6,7 @@ import (
 	utils "me/cobble/utils/db"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,14 +15,42 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// getProject retrieves a project from the database based on the provided ID.
+func listProjects(c echo.Context) error {
+	var conn = utils.EstablishConnection()
+	var page, err = strconv.Atoi(c.QueryParam("page"))
+	
+	if err != nil {
+		page = 0
+	}
+
+	limit, err := strconv.Atoi(c.QueryParam("limit"))
+
+	if err != nil {
+		limit = 25
+	}
+
+	var offset = page * limit
+
+
+	projects, err := conn.ListProjects(limit, offset, "downloads")
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch projects: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch projects")
+	}
+
+	c.JSON(http.StatusOK, projects)
+	return nil
+}
+
+// getProjectById retrieves a project from the database based on the provided ID.
 // It checks the project's status and returns the project if it is live,
 // or if the user is the owner of the project and has a valid token.
 // If the project is draft and the user is the owner but does not have a valid token,
 // it returns a forbidden error.
 // If the project is draft and the user is not the owner, it returns a forbidden error.
 // If the project is in an illegal state, it returns an internal server error.
-func getProject(c echo.Context) error {
+func getProjectById(c echo.Context) error {
 	// Get the project ID from the URL parameter.
 	id := c.Param("id")
 
@@ -30,6 +59,83 @@ func getProject(c echo.Context) error {
 
 	// Get the project from the database.
 	project, err := conn.GetProjectByID(id)
+
+	// If there was an error fetching the project, return an appropriate error.
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return echo.NewHTTPError(http.StatusNotFound, "no project found")
+		}
+		fmt.Fprintf(os.Stderr, "failed to fetch project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
+	}
+
+	// Get the token from the request headers.
+	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
+	validToken, token := utils.TokenValidate(rawToken)
+
+	// Check the status of the project.
+	switch project.Status {
+	case "live":
+		// If the project is live, return the project.
+		c.JSON(http.StatusOK, project)
+		return nil
+	case "draft":
+		// If the project is draft, check if the user is the owner and has a valid token.
+		owner, err := conn.GetUserById(project.Author)
+
+		if !validToken || token == nil {
+			// If the user does not have a valid token, return a forbidden error.
+			return echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
+		}
+
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return echo.NewHTTPError(http.StatusNotFound, "no owner found")
+			}
+			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+		}
+
+		user, err := conn.GetUserByToken(*token)
+
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
+			}
+			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+		}
+
+		if user.Token == owner.Token {
+			// If the user is the owner, return the project.
+			c.JSON(http.StatusOK, project)
+			return nil
+		} else {
+			// If the user is not the owner, return a forbidden error.
+			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
+		}
+	default:
+		// If the project is in an illegal state, return an internal server error.
+		return echo.NewHTTPError(http.StatusInternalServerError, "illegal project state")
+	}
+}
+
+// getProjectBySlug retrieves a project from the database based on the provided ID.
+// It checks the project's status and returns the project if it is live,
+// or if the user is the owner of the project and has a valid token.
+// If the project is draft and the user is the owner but does not have a valid token,
+// it returns a forbidden error.
+// If the project is draft and the user is not the owner, it returns a forbidden error.
+// If the project is in an illegal state, it returns an internal server error.
+func getProjectBySlug(c echo.Context) error {
+	// Get the project ID from the URL parameter.
+	id := c.Param("slug")
+
+	// Establish a connection to the database.
+	var conn = utils.EstablishConnection()
+
+	// Get the project from the database.
+	project, err := conn.GetProjectBySlug(id)
 
 	// If there was an error fetching the project, return an appropriate error.
 	if err != nil {
@@ -119,16 +225,11 @@ func createProject(c echo.Context) error {
 	}
 
 	// Check if a project with the same title or slug already exists
-	_, err := conn.Db.Query(context.Background(), "SELECT FROM projects WHERE title = LOWER($1) OR slug = LOWER($2)", title, slug)
+	projectTaken := conn.CheckForProjectNameConflict(title, slug)
 
 	// If a project with the same title or slug already exists, return a conflict error
-	if err != nil {
-		if err != pgx.ErrNoRows {
-			fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
-		} else {
-			return echo.NewHTTPError(http.StatusConflict, "another project shares that title or slug")
-		}
+	if projectTaken {
+		return echo.NewHTTPError(http.StatusConflict, "another project shares that title or slug")
 	}
 
 	// Get the user associated with the token
@@ -190,6 +291,10 @@ func changeProjectStatus(c echo.Context) error {
 	// Get the project ID and status from the request parameters
 	id := c.Param("id")
 	status := c.FormValue("status")
+
+	if status == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "missing status")
+	}
 
 	// Establish a connection to the database
 	conn := utils.EstablishConnection()
@@ -366,7 +471,9 @@ func search(c echo.Context) error {
 
 func RegisterProjectRoutes(e *echo.Echo) {
 	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(100)))
-	e.GET("/projects/:id", getProject)
+	e.GET("/projects", listProjects)
+	e.GET("/projects/:id", getProjectById)
+	e.GET("/projects/slug/:slug", getProjectBySlug)
 	e.GET("/projects/search/full", ftsSearch)
 	e.GET("/projects/search", search)
 	e.POST("/projects/create", createProject)
