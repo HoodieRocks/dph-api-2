@@ -23,8 +23,8 @@ func adminMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		validToken, token := utils.TokenValidate(rawToken)
 		if !validToken || token == nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
-		}		
-		
+		}
+
 		mod, err := conn.GetUserByToken(*token)
 		if err != nil {
 			if err == pgx.ErrNoRows {
@@ -36,7 +36,6 @@ func adminMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		return next(c)
 	}
 }
-
 
 func listPendingReview(c echo.Context) error {
 	var mod utils.User = c.Get("mod").(utils.User)

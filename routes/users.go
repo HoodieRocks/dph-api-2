@@ -59,7 +59,6 @@ func createUser(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusConflict, "a user with that name already exists")
 	}
 
-	
 	user = utils.User{
 		Username: username,
 		Role:     "default",

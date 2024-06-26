@@ -34,7 +34,7 @@ func listProjects(c echo.Context) error {
 	if err != nil {
 		page = 0
 	}
-	
+
 	limit, err := strconv.Atoi(c.QueryParam("limit"))
 	if err != nil {
 		limit = 25
