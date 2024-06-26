@@ -87,41 +87,31 @@ func getVersionOnProject(c echo.Context) error {
 		// If the project is live, return the version as JSON.
 		return c.JSON(http.StatusOK, version)
 	case "draft":
-		// If the project is draft, check if the user has permission to access it.
-		owner, err := conn.GetUserById(project.Author)
+		// Check if the user is the project owner.
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
-		// If the token is invalid or expired, return a 403 error.
-		if !validToken || token == nil {
-			return echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
-		}
-
-		// If the owner could not be retrieved, return a 403 error.
 		if err != nil {
-
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusForbidden, "no owner found")
-			}
-
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
-		}
-
-		// Retrieve the user from the token.
-		user, err := conn.GetUserByToken(*token)
-
-		// If the user could not be retrieved, return a 403 error.
-		if err != nil {
-
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusForbidden, "invalid token")
-			}
-
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+			return err
 		}
 
 		// Check if the user is the project owner.
-		if user.Token == owner.Token {
+		if isOwner {
+			// If the user is the project owner, return the version as JSON.
+			return c.JSON(http.StatusOK, version)
+		} else {
+			// If the user does not have permission to access the project, return a 403 error.
+			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
+		}
+	case "pending":
+		// Check if the user is the project owner.
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+		if err != nil {
+			return err
+		}
+
+		// Check if the user is the project owner.
+		if isOwner {
 			// If the user is the project owner, return the version as JSON.
 			return c.JSON(http.StatusOK, version)
 		} else {
@@ -335,46 +325,36 @@ func listVersions(c echo.Context) error {
 		return c.JSON(http.StatusOK, versions)
 
 	case "draft":
-		// If the project is draft, the token must be valid and the owner of the project.
-		owner, err := conn.GetUserById(project.Author)
+		// Check if the user is the project owner.
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
-		// If the token is not valid or the owner is not found, return a 403 error.
-		if !validToken || token == nil {
-			return echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
-		}
-
-		// If there was an error fetching the owner, return a 500 error.
 		if err != nil {
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusNotFound, "no owner found")
-			}
-
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+			return err
 		}
 
-		// Get the user from the token.
-		user, err := conn.GetUserByToken(*token)
-
-		// If the user is not found, return a 404 error.
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
-			}
-
-			// If there was an error fetching the user, return a 500 error.
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
-		}
-
-		// If the user is the owner of the project, return the versions.
-		if user.Token == owner.Token {
+		// Check if the user is the project owner.
+		if isOwner {
 			return c.JSON(http.StatusOK, versions)
 		} else {
 			// If the user is not the owner, return a 403 error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
+	case "pending":
+		// Check if the user is the project owner.
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
+		if err != nil {
+			return err
+		}
+
+		// Check if the user is the project owner.
+		if isOwner {
+			// If the user is the project owner, return the version as JSON.
+			return c.JSON(http.StatusOK, versions)
+		} else {
+			// If the user does not have permission to access the project, return a 403 error.
+			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
+		}
 	default:
 		// If the project is in an illegal state, return a 500 error.
 		return echo.NewHTTPError(http.StatusInternalServerError, "illegal project state")
@@ -449,45 +429,32 @@ func downloadVersion(c echo.Context) error {
 
 		return c.File(version.DownloadLink)
 	case "draft":
-		// Get the owner of the project.
-		owner, err := conn.GetUserById(project.Author)
 
-		// Check if the token is valid and not expired.
-		if !validToken || token == nil {
-			return echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
-		}
+		// Check if the user is the owner of the project.
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
-		// Check if there was an error fetching the project owner.
 		if err != nil {
-
-			// If the error is "no rows", return a not found error.
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusNotFound, "no owner found")
-			}
-
-			// If there was an error, return an internal server error.
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
-		}
-
-		// Get the user associated with the token.
-		user, err := conn.GetUserByToken(*token)
-
-		// Check if there was an error fetching the user.
-		if err != nil {
-
-			// If the error is "no rows", return a not found error.
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
-			}
-
-			// If there was an error, return an internal server error.
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+			return err
 		}
 
 		// Check if the user is the owner of the project.
-		if user.Token == owner.Token {
+		if isOwner {
+			return c.File(version.DownloadLink)
+		} else {
+			// If the user is not the owner, return a forbidden error.
+			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
+		}
+	case "pending":
+
+		// Check if the user is the owner of the project.
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+		if err != nil {
+			return err
+		}
+
+		// Check if the user is the owner of the project.
+		if isOwner {
 			return c.File(version.DownloadLink)
 		} else {
 			// If the user is not the owner, return a forbidden error.

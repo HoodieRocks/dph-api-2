@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v4"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 )
 
@@ -349,6 +351,39 @@ func (pg *postgres) GetVersionByCreation(projectId string, idx int) (*Version, e
 }
 
 // ! MISC
+
+func IsUserProjectOwner(project Project, token *string, validToken bool) (bool, error) {
+
+	conn := EstablishConnection()
+
+	// If the project is draft, check if the user is the owner and has a valid token.
+	owner, err := conn.GetUserById(project.Author)
+
+	if !validToken || token == nil {
+		// If the user does not have a valid token, return a forbidden error.
+		return false, echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
+	}
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, echo.NewHTTPError(http.StatusNotFound, "no owner found")
+		}
+		fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+		return false, echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+	}
+
+	user, err := conn.GetUserByToken(*token)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
+		}
+		fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+		return false, echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+	}
+
+	return owner.ID == user.ID, nil
+}
 
 func TokenValidate(token string) (bool, *string) {
 	var tokenParts = strings.Split(token, " ")

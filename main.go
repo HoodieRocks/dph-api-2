@@ -67,6 +67,7 @@ func startServer(ctx context.Context, wg *sync.WaitGroup) {
 	routes.RegisterUserRoutes(e)
 	routes.RegisterProjectRoutes(e)
 	routes.RegisterVersionRoutes(e)
+	routes.RegisterAdminRoutes(e)
 
 	// start server
 	go func() {

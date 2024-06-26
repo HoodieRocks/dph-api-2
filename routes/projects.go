@@ -94,21 +94,27 @@ func getProjectById(c echo.Context) error {
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
 	case "draft":
-		// If the project is draft, check if the user is the owner and has a valid token.
-		owner, err := conn.GetUserById(project.Author)
-
-		if !validToken || token == nil {
-			// If the user does not have a valid token, return a forbidden error.
-			return echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
-		}
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusNotFound, "no owner found")
-			}
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+			return err
 		}
+
+		if isOwner {
+			// If the user is the owner, return the project.
+			return c.JSON(http.StatusOK, project)
+		} else {
+			// If the user is not the owner, return a forbidden error.
+			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
+		}
+	case "pending":
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+		if err != nil {
+			return err
+		}
+
+		conn := utils.EstablishConnection()
 
 		user, err := conn.GetUserByToken(*token)
 
@@ -120,7 +126,7 @@ func getProjectById(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 		}
 
-		if user.Token == owner.Token {
+		if isOwner || (user.Role == "admin" || user.Role == "moderator") {
 			// If the user is the owner, return the project.
 			return c.JSON(http.StatusOK, project)
 		} else {
@@ -169,21 +175,27 @@ func getProjectBySlug(c echo.Context) error {
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
 	case "draft":
-		// If the project is draft, check if the user is the owner and has a valid token.
-		owner, err := conn.GetUserById(project.Author)
-
-		if !validToken || token == nil {
-			// If the user does not have a valid token, return a forbidden error.
-			return echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
-		}
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusNotFound, "no owner found")
-			}
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
+			return err
 		}
+
+		if isOwner {
+			// If the user is the owner, return the project.
+			return c.JSON(http.StatusOK, project)
+		} else {
+			// If the user is not the owner, return a forbidden error.
+			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
+		}
+	case "pending":
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+		if err != nil {
+			return err
+		}
+
+		conn := utils.EstablishConnection()
 
 		user, err := conn.GetUserByToken(*token)
 
@@ -195,7 +207,7 @@ func getProjectBySlug(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 		}
 
-		if user.Token == owner.Token {
+		if isOwner || (user.Role == "admin" || user.Role == "moderator") {
 			// If the user is the owner, return the project.
 			return c.JSON(http.StatusOK, project)
 		} else {
