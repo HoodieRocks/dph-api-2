@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 // getVersionOnProject retrieves a version of a project from the database.
@@ -84,8 +85,7 @@ func getVersionOnProject(c echo.Context) error {
 	switch project.Status {
 	case "live":
 		// If the project is live, return the version as JSON.
-		c.JSON(http.StatusOK, version)
-		return nil
+		return c.JSON(http.StatusOK, version)
 	case "draft":
 		// If the project is draft, check if the user has permission to access it.
 		owner, err := conn.GetUserById(project.Author)
@@ -123,8 +123,7 @@ func getVersionOnProject(c echo.Context) error {
 		// Check if the user is the project owner.
 		if user.Token == owner.Token {
 			// If the user is the project owner, return the version as JSON.
-			c.JSON(http.StatusOK, version)
-			return nil
+			return c.JSON(http.StatusOK, version)
 		} else {
 			// If the user does not have permission to access the project, return a 403 error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
@@ -273,11 +272,17 @@ func createVersion(c echo.Context) error {
 	}
 
 	// Commit the transaction.
-	tx.Commit(context.Background())
+	err = tx.Commit(context.Background())
+
+	// If the commit failed, rollback and return a 500 error.
+	if err != nil {
+		tx.Rollback(context.Background())
+		fmt.Fprintf(os.Stderr, "failed to create version: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+	}
 
 	// Return the created version as JSON.
-	c.JSON(http.StatusOK, version)
-	return nil
+	return c.JSON(http.StatusCreated, version)
 }
 
 // listVersions returns all versions of a project. If the project is in a draft state,
@@ -327,8 +332,7 @@ func listVersions(c echo.Context) error {
 	switch project.Status {
 	case "live":
 		// If the project is live, return the versions.
-		c.JSON(http.StatusOK, versions)
-		return nil
+		return c.JSON(http.StatusOK, versions)
 
 	case "draft":
 		// If the project is draft, the token must be valid and the owner of the project.
@@ -365,8 +369,7 @@ func listVersions(c echo.Context) error {
 
 		// If the user is the owner of the project, return the versions.
 		if user.Token == owner.Token {
-			c.JSON(http.StatusOK, versions)
-			return nil
+			return c.JSON(http.StatusOK, versions)
 		} else {
 			// If the user is not the owner, return a 403 error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
@@ -438,7 +441,12 @@ func downloadVersion(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to update project downloads")
 		}
 
-		tx.Commit(context.Background())
+		err = tx.Commit(context.Background())
+
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit transaction")
+		}
+
 		return c.File(version.DownloadLink)
 	case "draft":
 		// Get the owner of the project.
@@ -492,8 +500,8 @@ func downloadVersion(c echo.Context) error {
 }
 
 func RegisterVersionRoutes(e *echo.Echo) {
-	e.GET("/projects/:pid/versions/:idx", getVersionOnProject)
-	e.GET("/projects/:pid/versions", listVersions)
-	e.POST("/projects/:pid/versions/create", createVersion)
-	e.GET("/projects/:pid/versions/:idx/download", downloadVersion)
+	e.GET("/projects/:pid/versions/:idx", getVersionOnProject, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
+	e.GET("/projects/:pid/versions", listVersions, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
+	e.POST("/projects/:pid/versions/create", createVersion, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
+	e.GET("/projects/:pid/versions/:idx/download", downloadVersion, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
 }

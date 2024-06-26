@@ -48,7 +48,7 @@ func UploadFile(file *multipart.FileHeader, fileSize int64, fileTypes []string, 
 }
 
 func UploadVersionFile(file *multipart.FileHeader) (string, error) {
-	return UploadFile(file, 50*1024*1024, []string{"zip"}, "versions")
+	return UploadFile(file, 5*1024*1024, []string{"zip"}, "versions")
 }
 
 func UploadResourcePackFile(file *multipart.FileHeader) (string, error) {
@@ -56,5 +56,5 @@ func UploadResourcePackFile(file *multipart.FileHeader) (string, error) {
 }
 
 func UploadIconFile(file *multipart.FileHeader) (string, error) {
-	return UploadFile(file, 50*1024*1024, []string{"png", "jpg"}, "icons")
+	return UploadFile(file, 2*1024*1024, []string{"png", "jpg"}, "icons")
 }

@@ -56,7 +56,7 @@ func (pg *postgres) ResetUserToken(id string) error {
 	user.Token = GenerateSecureToken()
 
 	tx, err := pg.Db.Begin(context.Background())
-	
+
 	if err != nil {
 		err = tx.Rollback(context.Background())
 
@@ -74,7 +74,12 @@ func (pg *postgres) ResetUserToken(id string) error {
 		return err
 	}
 
-	tx.Commit(context.Background())
+	err = tx.Commit(context.Background())
+
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -144,7 +149,7 @@ func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]
 		`SELECT `+PROJECT_COLUMNS+`
 			FROM projects
 			WHERE status = 'live'
-			ORDER BY $1 DESC
+			ORDER BY $1 ASC
 			LIMIT $2 OFFSET $3`,
 		searchMethod,
 		trueLimit,
@@ -168,6 +173,11 @@ func (pg *postgres) GetProjectByID(id string) (Project, error) {
 	var project Project
 
 	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE id = $1 LIMIT 1`, id)
+
+	if err != nil {
+		return project, err
+	}
+
 	project, err = pgx.CollectOneRow(row, pgx.RowToStructByName[Project])
 
 	return project, err
@@ -177,6 +187,11 @@ func (pg *postgres) GetProjectBySlug(slug string) (Project, error) {
 	var project Project
 
 	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE slug = $1 LIMIT 1`, slug)
+
+	if err != nil {
+		return project, err
+	}
+
 	project, err = pgx.CollectOneRow(row, pgx.RowToStructByName[Project])
 
 	return project, err
@@ -307,6 +322,11 @@ func (pg *postgres) GetAllProjectVersions(projectId string) ([]Version, error) {
 	var versions []Version
 
 	var row, err = pg.Db.Query(context.Background(), `SELECT * FROM versions WHERE project = $1`, projectId)
+
+	if err != nil {
+		return versions, err
+	}
+
 	versions, err = pgx.CollectRows(row, pgx.RowToStructByName[Version])
 
 	return versions, err

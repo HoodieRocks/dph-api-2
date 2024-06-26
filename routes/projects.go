@@ -29,19 +29,20 @@ func listProjects(c echo.Context) error {
 	// Establish a connection to the database
 	var conn = utils.EstablishConnection()
 
-	var startTime = time.Now()
-
 	// Parse the query parameters for pagination
 	page, err := strconv.Atoi(c.QueryParam("page"))
 	if err != nil {
 		page = 0
 	}
+	
 	limit, err := strconv.Atoi(c.QueryParam("limit"))
 	if err != nil {
 		limit = 25
 	}
+
 	offset := page * limit
 
+	var startTime = time.Now()
 	// Retrieve the projects from the database
 	results, err := conn.ListProjects(limit, offset, "downloads")
 	if err != nil {
@@ -196,8 +197,7 @@ func getProjectBySlug(c echo.Context) error {
 
 		if user.Token == owner.Token {
 			// If the user is the owner, return the project.
-			c.JSON(http.StatusOK, project)
-			return nil
+			return c.JSON(http.StatusOK, project)
 		} else {
 			// If the user is not the owner, return a forbidden error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
@@ -284,11 +284,17 @@ func createProject(c echo.Context) error {
 	}
 
 	// Commit the transaction
-	tx.Commit(context.Background())
+	err = tx.Commit(context.Background())
+
+	// If there was an error committing the transaction, rollback and return an internal server error
+	if err != nil {
+		tx.Rollback(context.Background())
+		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+	}
 
 	// Return the created project in JSON format
-	c.JSON(http.StatusOK, project)
-	return nil
+	return c.JSON(http.StatusOK, project)
 }
 
 // changeProjectStatus handles the request to change the status of a project.
@@ -358,7 +364,14 @@ func changeProjectStatus(c echo.Context) error {
 	}
 
 	// Commit the transaction
-	tx.Commit(context.Background())
+	err = tx.Commit(context.Background())
+
+	// If the commit failed, rollback and return a 500 error.
+	if err != nil {
+		tx.Rollback(context.Background())
+		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+	}
 
 	// Return a success message
 	return c.String(http.StatusOK, "status updated")
@@ -480,12 +493,11 @@ func search(c echo.Context) error {
 }
 
 func RegisterProjectRoutes(e *echo.Echo) {
-	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(100)))
 	e.GET("/projects", listProjects)
-	e.GET("/projects/:id", getProjectById)
-	e.GET("/projects/slug/:slug", getProjectBySlug)
+	e.GET("/projects/:id", getProjectById, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(100)))
+	e.GET("/projects/slug/:slug", getProjectBySlug, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(100)))
 	e.GET("/projects/search/full", ftsSearch)
 	e.GET("/projects/search", search)
-	e.POST("/projects/create", createProject)
-	e.PUT("/projects/:id/status", changeProjectStatus)
+	e.POST("/projects/create", createProject, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
+	e.PUT("/projects/:id/status", changeProjectStatus, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
 }
