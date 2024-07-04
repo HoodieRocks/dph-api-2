@@ -14,7 +14,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 // listProjects retrieves a list of projects from the database based on the provided query parameters.
@@ -139,6 +138,22 @@ func getProjectById(c echo.Context) error {
 		// If the project is in an illegal state, return an internal server error.
 		return echo.NewHTTPError(http.StatusInternalServerError, "illegal project state")
 	}
+}
+
+func randomProject(c echo.Context) error {
+	var limit, err = strconv.Atoi(c.QueryParam("limit"))
+
+	if err != nil {
+		limit = 1
+	}
+
+	var conn = db.EstablishConnection()
+
+	project, err := conn.GetRandomProjects(limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
+	}
+	return c.JSON(http.StatusOK, project)
 }
 
 // getProjectBySlug retrieves a project from the database based on the provided ID.
@@ -563,10 +578,11 @@ func search(c echo.Context) error {
 
 func RegisterProjectRoutes(e *echo.Echo) {
 	e.GET("/projects", listProjects)
-	e.GET("/projects/:id", getProjectById, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(100)))
-	e.GET("/projects/slug/:slug", getProjectBySlug, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(100)))
+	e.GET("/projects/:id", getProjectById, utils.DevRateLimiter(100))
+	e.GET("/projects/random", randomProject, utils.DevRateLimiter(100))
+	e.GET("/projects/slug/:slug", getProjectBySlug, utils.DevRateLimiter(100))
 	e.GET("/projects/search/full", ftsSearch)
 	e.GET("/projects/search", search)
-	e.POST("/projects/create", createProject, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
-	e.PUT("/projects/:id/status", changeProjectStatus, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
+	e.POST("/projects/create", createProject, utils.DevRateLimiter(10))
+	e.PUT("/projects/:id/status", changeProjectStatus, utils.DevRateLimiter(10))
 }

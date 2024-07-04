@@ -67,5 +67,5 @@ func listPendingReview(c echo.Context) error {
 }
 
 func RegisterAdminRoutes(e *echo.Echo) {
-	e.GET("/admin", listPendingReview, adminMiddleware, utils.DevRateLimiter(10))
+	e.GET("/admin/pending", listPendingReview, adminMiddleware, utils.DevRateLimiter(10))
 }

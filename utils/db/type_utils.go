@@ -190,7 +190,7 @@ func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]
 func (pg *postgres) getProjectByX(column string, value string) (Project, error) {
 	var project Project
 
-	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE` + column + `= $1 LIMIT 1`, value)
+	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE`+column+`= $1 LIMIT 1`, value)
 
 	if err != nil {
 		return project, err
@@ -207,6 +207,20 @@ func (pg *postgres) GetProjectByID(id string) (Project, error) {
 
 func (pg *postgres) GetProjectBySlug(slug string) (Project, error) {
 	return pg.getProjectByX("slug", slug)
+}
+
+func (pg *postgres) GetRandomProjects(limit int) ([]Project, error) {
+
+	var project []Project
+	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE status = 'live' ORDER BY RANDOM() LIMIT $2`, limit)
+
+	if err != nil {
+		return project, err
+	}
+
+	project, err = pgx.CollectRows(row, pgx.RowToStructByName[Project])
+
+	return project, err
 }
 
 func (pg *postgres) GetAllProjectsByAuthor(authorId string) ([]Project, error) {
