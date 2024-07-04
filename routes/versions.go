@@ -79,7 +79,7 @@ func getVersionOnProject(c echo.Context) error {
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 	// Validate the token.
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 
 	// Check if the project is live or if the project is in draft mode, then check if the user is the project owner.
 	switch project.Status {
@@ -153,7 +153,7 @@ func createVersion(c echo.Context) error {
 	conn := db.EstablishConnection()
 
 	// Validate the authorization token.
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 
 	// If the token is invalid, return a 400 error.
 	if !validToken || token == nil {
@@ -331,7 +331,7 @@ func listVersions(c echo.Context) error {
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 	// Validate the token.
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -406,7 +406,7 @@ func downloadVersion(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 
 	// Get the version from the database.
 	version, err := conn.GetVersionByCreation(pid, idx)

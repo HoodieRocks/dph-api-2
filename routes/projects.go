@@ -88,7 +88,7 @@ func getProjectById(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -169,7 +169,7 @@ func getProjectBySlug(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -249,7 +249,7 @@ func createProject(c echo.Context) error {
 	conn := db.EstablishConnection()
 
 	// Validate the token
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 
 	// Check if the token is valid
 	if !validToken || token == nil {
@@ -374,7 +374,7 @@ func changeProjectStatus(c echo.Context) error {
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 	// Validate the token
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := utils.ValidateToken(rawToken)
 	if !validToken || token == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
 	}

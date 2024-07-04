@@ -61,7 +61,7 @@ func IsUserProjectOwner(project db.Project, token *string, validToken bool) (boo
 	return owner.ID == user.ID, nil
 }
 
-func TokenValidate(token string) (bool, *string) {
+func ValidateToken(token string) (bool, *string) {
 	var tokenParts = strings.Split(token, " ")
 
 	if len(tokenParts) < 2 {

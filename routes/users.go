@@ -7,6 +7,7 @@ import (
 	"me/cobble/utils/db"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/argon2id"
@@ -122,10 +123,109 @@ func createUser(c echo.Context) error {
 
 	// Return the created user as a JSON response.
 	return c.JSON(http.StatusCreated, user)
+}
 
+func getSelf(c echo.Context) error {
+	var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
+	var validToken, token = utils.ValidateToken(rawToken)
+
+	if !validToken {
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+	}
+
+	var conn = db.EstablishConnection()
+	var user, err = conn.GetUserByToken(*token)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch user: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch user")
+	}
+
+	return c.JSON(http.StatusOK, user)
+}
+
+func logOut(c echo.Context) error {
+	c.SetCookie(&http.Cookie{
+		Name:    "DPH_TOKEN",
+		Value:   "",
+		Expires: time.Now().AddDate(0, 0, -1),
+	})
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+func getProjectsByUser(c echo.Context) error {
+
+	var id = c.Param("id")
+	var conn = db.EstablishConnection()
+
+	if id == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+
+	if strings.ToLower(id) == "me" {
+		var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
+		var validToken, token = utils.ValidateToken(rawToken)
+
+		if !validToken {
+			return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+		}
+
+		var conn = db.EstablishConnection()
+		var user, err = conn.GetUserByToken(*token)
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to fetch user: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch user")
+		}
+
+		id = user.ID
+	}
+
+	projects, err := conn.GetAllProjectsByAuthor(id)
+
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch projects")
+	}
+
+	return c.JSON(http.StatusOK, projects)
+}
+
+type StaffResponse struct {
+	Count int       `json:"count"`
+	Users []db.User `json:"users"`
+}
+
+func getStaff(c echo.Context) error {
+	var conn = db.EstablishConnection()
+	var role = c.Param("role")
+
+	if role == "" {
+		role = "helper"
+	}
+
+	if role != "helper" && role != "admin" && role != "moderator" {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid role")
+	}
+
+	staff, err := conn.GetAllInRole(role)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch staff: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch staff")
+	}
+
+	return c.JSON(http.StatusOK, StaffResponse{
+		Count: len(staff),
+		Users: staff,
+	})
 }
 
 func RegisterUserRoutes(e *echo.Echo) {
 	e.GET("/users/:id", getUserRoute, utils.DevRateLimiter(100))
+	e.GET("/users/me", getSelf, utils.DevRateLimiter(100))
+	e.GET("/users/me/logout", logOut, utils.DevRateLimiter(100))
+	e.GET("/users/projects/:id", getProjectsByUser, utils.DevRateLimiter(100))
+	e.GET("/users/staff/:role", getStaff, utils.DevRateLimiter(100))
 	e.POST("/users/create", createUser, utils.DevRateLimiter(10))
 }

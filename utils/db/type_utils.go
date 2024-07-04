@@ -100,7 +100,7 @@ func (pg *postgres) GetUserByToken(token string) (User, error) {
 func (pg *postgres) CheckForUsernameConflict(username string) bool {
 
 	var rowLen = 0
-	var err = pg.Db.QueryRow(context.Background(), `SELECT count(*) FROM users WHERE username = LOWER($1)`, username).Scan(&rowLen)
+	var err = pg.Db.QueryRow(context.Background(), `SELECT count(1) FROM users WHERE username = LOWER($1)`, username).Scan(&rowLen)
 
 	return err == pgx.ErrNoRows || rowLen > 0
 }
@@ -136,6 +136,24 @@ func (pg *postgres) UpdateUser(tx pgx.Tx, user User) error {
 	return err
 }
 
+func (pg *postgres) GetAllInRole(id string) ([]User, error) {
+
+	var users []User
+	rows, err := pg.Db.Query(context.Background(), `SELECT * FROM users WHERE role = $1`, id)
+
+	if err != nil {
+		return nil, err
+	}
+
+	users, err = pgx.CollectRows(rows, pgx.RowToStructByName[User])
+
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
 // ! PROJECTS
 
 func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]Project, error) {
@@ -169,10 +187,10 @@ func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]
 	return projects, err
 }
 
-func (pg *postgres) GetProjectByID(id string) (Project, error) {
+func (pg *postgres) getProjectByX(column string, value string) (Project, error) {
 	var project Project
 
-	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE id = $1 LIMIT 1`, id)
+	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE` + column + `= $1 LIMIT 1`, value)
 
 	if err != nil {
 		return project, err
@@ -183,16 +201,24 @@ func (pg *postgres) GetProjectByID(id string) (Project, error) {
 	return project, err
 }
 
-func (pg *postgres) GetProjectBySlug(slug string) (Project, error) {
-	var project Project
+func (pg *postgres) GetProjectByID(id string) (Project, error) {
+	return pg.getProjectByX("id", id)
+}
 
-	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE slug = $1 LIMIT 1`, slug)
+func (pg *postgres) GetProjectBySlug(slug string) (Project, error) {
+	return pg.getProjectByX("slug", slug)
+}
+
+func (pg *postgres) GetAllProjectsByAuthor(authorId string) ([]Project, error) {
+	var project []Project
+
+	var rows, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE author = $1 LIMIT 1`, authorId)
 
 	if err != nil {
 		return project, err
 	}
 
-	project, err = pgx.CollectOneRow(row, pgx.RowToStructByName[Project])
+	project, err = pgx.CollectRows(rows, pgx.RowToStructByName[Project])
 
 	return project, err
 }
@@ -215,7 +241,7 @@ func (pg *postgres) SearchProjects(query string) (pgx.Rows, error) {
 func (pg *postgres) CheckForProjectNameConflict(title string, slug string) bool {
 
 	var rowLen = 0
-	var err = pg.Db.QueryRow(context.Background(), "SELECT count(*) FROM projects WHERE title = LOWER($1) OR slug = LOWER($2)", title, slug).Scan(&rowLen)
+	var err = pg.Db.QueryRow(context.Background(), "SELECT count(1) FROM projects WHERE title = LOWER($1) OR slug = LOWER($2)", title, slug).Scan(&rowLen)
 
 	return err == pgx.ErrNoRows || rowLen > 0
 }

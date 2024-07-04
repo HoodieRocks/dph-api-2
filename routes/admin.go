@@ -21,7 +21,7 @@ func adminMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 		// Validate the token
-		validToken, token := utils.TokenValidate(rawToken)
+		validToken, token := utils.ValidateToken(rawToken)
 		if !validToken || token == nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
 		}
