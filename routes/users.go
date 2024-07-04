@@ -3,7 +3,8 @@ package routes
 import (
 	"context"
 	"fmt"
-	utils "me/cobble/utils/db"
+	"me/cobble/utils"
+	"me/cobble/utils/db"
 	"net/http"
 	"os"
 	"time"
@@ -11,12 +12,11 @@ import (
 	"github.com/alexedwards/argon2id"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 func getUserRoute(c echo.Context) error {
 	var id = c.Param("id")
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	user, err := conn.GetUserById(id)
 
@@ -35,8 +35,8 @@ func getUserRoute(c echo.Context) error {
 
 func createUser(c echo.Context) error {
 	// Declare variables for the user and connection.
-	var user utils.User
-	var conn = utils.EstablishConnection()
+	var user db.User
+	var conn = db.EstablishConnection()
 
 	// Retrieve the username and password from the request form values.
 	var username = c.FormValue("username")
@@ -59,13 +59,13 @@ func createUser(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusConflict, "a user with that name already exists")
 	}
 
-	user = utils.User{
+	user = db.User{
 		Username: username,
 		Role:     "default",
 		Bio:      "A new user!",
 		JoinDate: time.Now(),
 		Password: passHash,
-		Token:    utils.GenerateSecureToken(),
+		Token:    db.GenerateSecureToken(),
 	}
 
 	// Begin a transaction.
@@ -74,7 +74,7 @@ func createUser(c echo.Context) error {
 	// Check for errors during the transaction.
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -89,7 +89,7 @@ func createUser(c echo.Context) error {
 	// Check for errors during the user creation.
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -104,7 +104,7 @@ func createUser(c echo.Context) error {
 	// Check for errors during the commit.
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -126,6 +126,6 @@ func createUser(c echo.Context) error {
 }
 
 func RegisterUserRoutes(e *echo.Echo) {
-	e.GET("/users/:id", getUserRoute, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(100)))
-	e.POST("/users/create", createUser, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
+	e.GET("/users/:id", getUserRoute, utils.DevRateLimiter(100))
+	e.POST("/users/create", createUser, utils.DevRateLimiter(10))
 }

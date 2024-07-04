@@ -3,8 +3,8 @@ package routes
 import (
 	"context"
 	"fmt"
-	files "me/cobble/utils"
-	utils "me/cobble/utils/db"
+	"me/cobble/utils/files"
+	"me/cobble/utils/db"
 	"net/http"
 	"os"
 	"strconv"
@@ -24,11 +24,11 @@ func listProjects(c echo.Context) error {
 	type SearchResults struct {
 		Time    float64         `json:"time"` // Search time in seconds
 		Count   int             `json:"count"`
-		Results []utils.Project `json:"results"`
+		Results []db.Project `json:"results"`
 	}
 
 	// Establish a connection to the database
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	// Parse the query parameters for pagination
 	page, err := strconv.Atoi(c.QueryParam("page"))
@@ -71,7 +71,7 @@ func getProjectById(c echo.Context) error {
 	id := c.Param("id")
 
 	// Establish a connection to the database.
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	// Get the project from the database.
 	project, err := conn.GetProjectByID(id)
@@ -87,7 +87,7 @@ func getProjectById(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -95,7 +95,7 @@ func getProjectById(c echo.Context) error {
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
 	case "draft":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -109,13 +109,13 @@ func getProjectById(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
 	case "pending":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
 		}
 
-		conn := utils.EstablishConnection()
+		conn := db.EstablishConnection()
 
 		user, err := conn.GetUserByToken(*token)
 
@@ -152,7 +152,7 @@ func getProjectBySlug(c echo.Context) error {
 	id := c.Param("slug")
 
 	// Establish a connection to the database.
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	// Get the project from the database.
 	project, err := conn.GetProjectBySlug(id)
@@ -168,7 +168,7 @@ func getProjectBySlug(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -176,7 +176,7 @@ func getProjectBySlug(c echo.Context) error {
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
 	case "draft":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -190,13 +190,13 @@ func getProjectBySlug(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
 	case "pending":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
 		}
 
-		conn := utils.EstablishConnection()
+		conn := db.EstablishConnection()
 
 		user, err := conn.GetUserByToken(*token)
 
@@ -245,10 +245,10 @@ func createProject(c echo.Context) error {
 	category := strings.Split(c.FormValue("category"), ",")
 
 	// Establish a connection to the database
-	conn := utils.EstablishConnection()
+	conn := db.EstablishConnection()
 
 	// Validate the token
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 
 	// Check if the token is valid
 	if !validToken || token == nil {
@@ -286,7 +286,7 @@ func createProject(c echo.Context) error {
 	}
 
 	// Create the project struct
-	project := utils.Project{
+	project := db.Project{
 		Title:       title,
 		Slug:        slug,
 		Author:      user.ID,
@@ -321,7 +321,6 @@ func createProject(c echo.Context) error {
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
 
-		
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -337,7 +336,7 @@ func createProject(c echo.Context) error {
 	// If there was an error committing the transaction, rollback and return an internal server error
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -368,13 +367,13 @@ func changeProjectStatus(c echo.Context) error {
 	}
 
 	// Establish a connection to the database
-	conn := utils.EstablishConnection()
+	conn := db.EstablishConnection()
 
 	// Get the token from the authorization header
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 	// Validate the token
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 	if !validToken || token == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
 	}
@@ -405,7 +404,7 @@ func changeProjectStatus(c echo.Context) error {
 	tx, err := conn.Db.Begin(context.Background())
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -418,7 +417,7 @@ func changeProjectStatus(c echo.Context) error {
 	err = conn.UpdateProjectStatus(tx, project.ID, status)
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -433,7 +432,7 @@ func changeProjectStatus(c echo.Context) error {
 	// If the commit failed, rollback and return a 500 error.
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -457,7 +456,7 @@ func ftsSearch(c echo.Context) error {
 	query := c.QueryParam("q")
 
 	// Establish a connection to the database
-	conn := utils.EstablishConnection()
+	conn := db.EstablishConnection()
 
 	// Record the start time of the search
 	startTime := time.Now()
@@ -469,7 +468,7 @@ func ftsSearch(c echo.Context) error {
 	type SearchResults struct {
 		Time    float64         `json:"time"` // Search time in seconds
 		Count   int             `json:"count"`
-		Results []utils.Project `json:"results"`
+		Results []db.Project `json:"results"`
 	}
 
 	// Handle errors during the search
@@ -479,7 +478,7 @@ func ftsSearch(c echo.Context) error {
 			return c.JSON(http.StatusOK, SearchResults{
 				Time:    time.Since(startTime).Seconds(),
 				Count:   0,
-				Results: make([]utils.Project, 0),
+				Results: make([]db.Project, 0),
 			})
 		}
 
@@ -489,7 +488,7 @@ func ftsSearch(c echo.Context) error {
 	}
 
 	// Collect the search results
-	results, err := pgx.CollectRows(rows, pgx.RowToStructByName[utils.Project])
+	results, err := pgx.CollectRows(rows, pgx.RowToStructByName[db.Project])
 
 	// Handle errors during the search result collection
 	if err != nil {
@@ -513,7 +512,7 @@ func search(c echo.Context) error {
 	var query = c.QueryParam("q")
 
 	// Establish a connection to the database.
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	// Keep track of the start time of the search.
 	var startTime = time.Now()
@@ -525,7 +524,7 @@ func search(c echo.Context) error {
 	type SearchResults struct {
 		Time    float64         `json:"time"` // Search time in seconds
 		Count   int             `json:"count"`
-		Results []utils.Project `json:"results"`
+		Results []db.Project `json:"results"`
 	}
 
 	// Handle errors during the search.
@@ -535,7 +534,7 @@ func search(c echo.Context) error {
 			return c.JSON(http.StatusOK, SearchResults{
 				Time:    time.Since(startTime).Seconds(),
 				Count:   0,
-				Results: make([]utils.Project, 0),
+				Results: make([]db.Project, 0),
 			})
 		}
 
@@ -545,7 +544,7 @@ func search(c echo.Context) error {
 	}
 
 	// Collect the search results.
-	results, err := pgx.CollectRows(rows, pgx.RowToStructByName[utils.Project])
+	results, err := pgx.CollectRows(rows, pgx.RowToStructByName[db.Project])
 
 	// Handle errors during the search result collection.
 	if err != nil {

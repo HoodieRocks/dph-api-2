@@ -3,7 +3,8 @@ package routes
 import (
 	"context"
 	"fmt"
-	utils "me/cobble/utils/db"
+	"me/cobble/utils"
+	"me/cobble/utils/db"
 	"net/http"
 	"os"
 
@@ -14,13 +15,13 @@ import (
 func adminMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		// Establish a connection to the database
-		conn := utils.EstablishConnection()
+		conn := db.EstablishConnection()
 
 		// Get the token from the authorization header
 		rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 		// Validate the token
-		validToken, token := utils.TokenValidate(rawToken)
+		validToken, token := db.TokenValidate(rawToken)
 		if !validToken || token == nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
 		}
@@ -38,7 +39,7 @@ func adminMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func listPendingReview(c echo.Context) error {
-	var mod utils.User = c.Get("mod").(utils.User)
+	var mod db.User = c.Get("mod").(db.User)
 
 	// Check if the user has permission to change the project status
 	if mod.Role != "moderator" && mod.Role != "admin" {
@@ -46,7 +47,7 @@ func listPendingReview(c echo.Context) error {
 	}
 
 	// Establish a connection to the database
-	conn := utils.EstablishConnection()
+	conn := db.EstablishConnection()
 
 	rows, err := conn.Db.Query(context.Background(), "SELECT * FROM projects WHERE status = 'pending'")
 
@@ -55,7 +56,7 @@ func listPendingReview(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch projects")
 	}
 
-	projects, err := pgx.CollectRows(rows, pgx.RowToStructByName[utils.Project])
+	projects, err := pgx.CollectRows(rows, pgx.RowToStructByName[db.Project])
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Query failed: %v\n", err)
@@ -66,5 +67,5 @@ func listPendingReview(c echo.Context) error {
 }
 
 func RegisterAdminRoutes(e *echo.Echo) {
-	e.GET("/admin", listPendingReview, adminMiddleware)
+	e.GET("/admin", listPendingReview, adminMiddleware, utils.DevRateLimiter(10))
 }

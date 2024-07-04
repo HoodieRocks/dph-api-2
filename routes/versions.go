@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	d_errors "me/cobble/errors"
-	files "me/cobble/utils"
-	utils "me/cobble/utils/db"
+	"me/cobble/utils"
+	"me/cobble/utils/db"
+	files "me/cobble/utils/files"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 // getVersionOnProject retrieves a version of a project from the database.
@@ -47,7 +47,7 @@ func getVersionOnProject(c echo.Context) error {
 	}
 
 	// Establish a connection to the database.
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	// Retrieve the project from the database.
 	project, err := conn.GetProjectByID(pid)
@@ -79,7 +79,7 @@ func getVersionOnProject(c echo.Context) error {
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 	// Validate the token.
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 
 	// Check if the project is live or if the project is in draft mode, then check if the user is the project owner.
 	switch project.Status {
@@ -88,7 +88,7 @@ func getVersionOnProject(c echo.Context) error {
 		return c.JSON(http.StatusOK, version)
 	case "draft":
 		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -104,7 +104,7 @@ func getVersionOnProject(c echo.Context) error {
 		}
 	case "pending":
 		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -150,10 +150,10 @@ func createVersion(c echo.Context) error {
 	rpDownload, _ := c.FormFile("rpDownload")
 
 	// Establish a database connection.
-	conn := utils.EstablishConnection()
+	conn := db.EstablishConnection()
 
 	// Validate the authorization token.
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 
 	// If the token is invalid, return a 400 error.
 	if !validToken || token == nil {
@@ -206,7 +206,7 @@ func createVersion(c echo.Context) error {
 	}
 
 	// Create a new version object.
-	var version = utils.Version{
+	var version = db.Version{
 		Title:        title,
 		Description:  description,
 		Creation:     time.Now(),
@@ -247,7 +247,7 @@ func createVersion(c echo.Context) error {
 	// If the transaction failed, rollback and return a 500 error.
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -262,7 +262,7 @@ func createVersion(c echo.Context) error {
 	// If the creation failed, rollback and return a 500 error.
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -277,7 +277,7 @@ func createVersion(c echo.Context) error {
 	// If the commit failed, rollback and return a 500 error.
 	if err != nil {
 		newErr := tx.Rollback(context.Background())
-		
+
 		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -297,7 +297,7 @@ func listVersions(c echo.Context) error {
 	pid := c.Param("pid")
 
 	// Establish a connection to the database.
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	// Get the project from the database.
 	project, err := conn.GetProjectByID(pid)
@@ -331,7 +331,7 @@ func listVersions(c echo.Context) error {
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 	// Validate the token.
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -341,7 +341,7 @@ func listVersions(c echo.Context) error {
 
 	case "draft":
 		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -356,7 +356,7 @@ func listVersions(c echo.Context) error {
 		}
 	case "pending":
 		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -379,7 +379,7 @@ func listVersions(c echo.Context) error {
 func downloadVersion(c echo.Context) error {
 	pid := c.Param("pid")
 
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
 	project, err := conn.GetProjectByID(pid)
 
@@ -406,7 +406,7 @@ func downloadVersion(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.TokenValidate(rawToken)
+	validToken, token := db.TokenValidate(rawToken)
 
 	// Get the version from the database.
 	version, err := conn.GetVersionByCreation(pid, idx)
@@ -433,7 +433,7 @@ func downloadVersion(c echo.Context) error {
 
 		if err != nil {
 			newErr := tx.Rollback(context.Background())
-		
+
 			if newErr != nil {
 				fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
@@ -453,7 +453,7 @@ func downloadVersion(c echo.Context) error {
 	case "draft":
 
 		// Check if the user is the owner of the project.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -469,7 +469,7 @@ func downloadVersion(c echo.Context) error {
 	case "pending":
 
 		// Check if the user is the owner of the project.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -489,8 +489,8 @@ func downloadVersion(c echo.Context) error {
 }
 
 func RegisterVersionRoutes(e *echo.Echo) {
-	e.GET("/projects/:pid/versions/:idx", getVersionOnProject, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
-	e.GET("/projects/:pid/versions", listVersions, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
-	e.POST("/projects/:pid/versions/create", createVersion, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
-	e.GET("/projects/:pid/versions/:idx/download", downloadVersion, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(10)))
+	e.GET("/projects/:pid/versions/:idx", getVersionOnProject, utils.DevRateLimiter(10))
+	e.GET("/projects/:pid/versions", listVersions, utils.DevRateLimiter(10))
+	e.POST("/projects/:pid/versions/create", createVersion, utils.DevRateLimiter(10))
+	e.GET("/projects/:pid/versions/:idx/download", downloadVersion, utils.DevRateLimiter(10))
 }
