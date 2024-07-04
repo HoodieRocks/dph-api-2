@@ -52,9 +52,9 @@ func CreateTables(pg *postgres) {
 	)`)
 
 	if err != nil {
-		err = tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
 
-		if err != nil {
+		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err)
 			panic(err)
 		}
@@ -81,9 +81,9 @@ func CreateTables(pg *postgres) {
 	)`)
 
 	if err != nil {
-		err = tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
 
-		if err != nil {
+		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err)
 			panic(err)
 		}
@@ -106,9 +106,9 @@ func CreateTables(pg *postgres) {
 	)`)
 
 	if err != nil {
-		err = tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
 
-		if err != nil {
+		if newErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err)
 			panic(err)
 		}

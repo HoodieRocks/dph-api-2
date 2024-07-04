@@ -65,7 +65,7 @@ func createUser(c echo.Context) error {
 		Bio:      "A new user!",
 		JoinDate: time.Now(),
 		Password: passHash,
-		Token:    db.GenerateSecureToken(),
+		Token:    utils.GenerateSecureToken(),
 	}
 
 	// Begin a transaction.

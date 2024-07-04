@@ -5,14 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
-	gonanoid "github.com/matoous/go-nanoid/v2"
+	nanoid "github.com/matoous/go-nanoid/v2"
 )
 
 type postgres struct {
@@ -55,7 +53,7 @@ func (pg *postgres) ResetUserToken(id string) error {
 		return err
 	}
 
-	user.Token = GenerateSecureToken()
+	user.Token = generateSecureToken()
 
 	tx, err := pg.Db.Begin(context.Background())
 
@@ -109,7 +107,7 @@ func (pg *postgres) CheckForUsernameConflict(username string) bool {
 
 func (pg *postgres) CreateUser(tx pgx.Tx, user User) error {
 
-	id, _ := gonanoid.New(12)
+	id, _ := nanoid.New(12)
 
 	_, err := tx.Exec(context.Background(),
 		"INSERT INTO users (id, username, role, bio, join_date, password, token) VALUES ($1, $2, $3, $4, $5, $6, $7)",
@@ -224,7 +222,7 @@ func (pg *postgres) CheckForProjectNameConflict(title string, slug string) bool 
 
 func (pg *postgres) CreateProject(tx pgx.Tx, project Project) error {
 
-	id, _ := gonanoid.New(12)
+	id, _ := nanoid.New(12)
 
 	_, err := tx.Exec(context.Background(),
 		"INSERT INTO projects (id, title, slug, author, description, body, creation, updated, category) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
@@ -290,7 +288,7 @@ func (pg *postgres) UpdateProjectStatus(tx pgx.Tx, projectId string, status stri
 
 func (pg *postgres) CreateVersion(tx pgx.Tx, projectId string, version Version) error {
 
-	id, _ := gonanoid.New(12)
+	id, _ := nanoid.New(12)
 
 	_, err := tx.Exec(context.Background(),
 		`INSERT INTO versions (
@@ -352,57 +350,14 @@ func (pg *postgres) GetVersionByCreation(projectId string, idx int) (*Version, e
 
 // ! MISC
 
-func IsUserProjectOwner(project Project, token *string, validToken bool) (bool, error) {
-
-	conn := EstablishConnection()
-
-	// If the project is draft, check if the user is the owner and has a valid token.
-	owner, err := conn.GetUserById(project.Author)
-
-	if !validToken || token == nil {
-		// If the user does not have a valid token, return a forbidden error.
-		return false, echo.NewHTTPError(http.StatusForbidden, "invalid or expired token")
-	}
-
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return false, echo.NewHTTPError(http.StatusNotFound, "no owner found")
-		}
-		fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-		return false, echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
-	}
-
-	user, err := conn.GetUserByToken(*token)
-
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return false, echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
-		}
-		fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
-		return false, echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
-	}
-
-	return owner.ID == user.ID, nil
+func (pg *postgres) Ping() error {
+	return pg.Db.Ping(context.Background())
 }
 
-func TokenValidate(token string) (bool, *string) {
-	var tokenParts = strings.Split(token, " ")
-
-	if len(tokenParts) < 2 {
-		return false, nil
-	}
-
-	return tokenParts[0] == "Bearer" && len(tokenParts[1]) > 8, &tokenParts[1]
-}
-
-func GenerateSecureToken() string {
+func generateSecureToken() string {
 	b := make([]byte, 64)
 	if _, err := rand.Read(b); err != nil {
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-func (pg *postgres) Ping() error {
-	return pg.Db.Ping(context.Background())
 }

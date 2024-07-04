@@ -3,8 +3,9 @@ package routes
 import (
 	"context"
 	"fmt"
-	"me/cobble/utils/files"
+	"me/cobble/utils"
 	"me/cobble/utils/db"
+	"me/cobble/utils/files"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,8 +23,8 @@ import (
 func listProjects(c echo.Context) error {
 	// Define the structure of the search results.
 	type SearchResults struct {
-		Time    float64         `json:"time"` // Search time in seconds
-		Count   int             `json:"count"`
+		Time    float64      `json:"time"` // Search time in seconds
+		Count   int          `json:"count"`
 		Results []db.Project `json:"results"`
 	}
 
@@ -87,7 +88,7 @@ func getProjectById(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := db.TokenValidate(rawToken)
+	validToken, token := utils.TokenValidate(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -95,7 +96,7 @@ func getProjectById(c echo.Context) error {
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
 	case "draft":
-		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -109,7 +110,7 @@ func getProjectById(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
 	case "pending":
-		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -168,7 +169,7 @@ func getProjectBySlug(c echo.Context) error {
 
 	// Get the token from the request headers.
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := db.TokenValidate(rawToken)
+	validToken, token := utils.TokenValidate(rawToken)
 
 	// Check the status of the project.
 	switch project.Status {
@@ -176,7 +177,7 @@ func getProjectBySlug(c echo.Context) error {
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
 	case "draft":
-		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -190,7 +191,7 @@ func getProjectBySlug(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
 	case "pending":
-		isOwner, err := db.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
 
 		if err != nil {
 			return err
@@ -248,7 +249,7 @@ func createProject(c echo.Context) error {
 	conn := db.EstablishConnection()
 
 	// Validate the token
-	validToken, token := db.TokenValidate(rawToken)
+	validToken, token := utils.TokenValidate(rawToken)
 
 	// Check if the token is valid
 	if !validToken || token == nil {
@@ -373,7 +374,7 @@ func changeProjectStatus(c echo.Context) error {
 	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
 
 	// Validate the token
-	validToken, token := db.TokenValidate(rawToken)
+	validToken, token := utils.TokenValidate(rawToken)
 	if !validToken || token == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
 	}
@@ -466,8 +467,8 @@ func ftsSearch(c echo.Context) error {
 
 	// Define the search results structure
 	type SearchResults struct {
-		Time    float64         `json:"time"` // Search time in seconds
-		Count   int             `json:"count"`
+		Time    float64      `json:"time"` // Search time in seconds
+		Count   int          `json:"count"`
 		Results []db.Project `json:"results"`
 	}
 
@@ -522,8 +523,8 @@ func search(c echo.Context) error {
 
 	// Define the structure of the search results.
 	type SearchResults struct {
-		Time    float64         `json:"time"` // Search time in seconds
-		Count   int             `json:"count"`
+		Time    float64      `json:"time"` // Search time in seconds
+		Count   int          `json:"count"`
 		Results []db.Project `json:"results"`
 	}
 

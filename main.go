@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"me/cobble/routes"
-	utils "me/cobble/utils/db"
+	"me/cobble/utils/db"
 	"net/http"
 	"os"
 	"os/signal"
@@ -50,16 +50,16 @@ func startServer(ctx context.Context, wg *sync.WaitGroup) {
 
 	e := echo.New()
 
-	var conn = utils.EstablishConnection()
+	var conn = db.EstablishConnection()
 
-	utils.CreateTables(conn)
+	db.CreateTables(conn)
 
 	e.Use(middleware.Gzip())
 	e.Use(middleware.Decompress())
 	e.Use(middleware.Secure())
 
 	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "Hello, World!")
+		return c.String(http.StatusOK, "Welcome to the DPH API (go port)")
 	})
 	e.Static("/files", "./files")
 
