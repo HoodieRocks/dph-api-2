@@ -246,7 +246,12 @@ func createVersion(c echo.Context) error {
 
 	// If the transaction failed, rollback and return a 500 error.
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
@@ -256,7 +261,12 @@ func createVersion(c echo.Context) error {
 
 	// If the creation failed, rollback and return a 500 error.
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
@@ -266,7 +276,12 @@ func createVersion(c echo.Context) error {
 
 	// If the commit failed, rollback and return a 500 error.
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
@@ -417,7 +432,14 @@ func downloadVersion(c echo.Context) error {
 		err = conn.UpdateProjectDownloads(tx, project.ID, project.Downloads+1)
 
 		if err != nil {
-			tx.Rollback(context.Background())
+			newErr := tx.Rollback(context.Background())
+		
+			if newErr != nil {
+				fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+			}
+
+			fmt.Fprintf(os.Stderr, "failed to update downloads: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to update project downloads")
 		}
 

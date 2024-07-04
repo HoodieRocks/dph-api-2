@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	files "me/cobble/utils"
 	utils "me/cobble/utils/db"
 	"net/http"
 	"os"
@@ -233,6 +234,13 @@ func createProject(c echo.Context) error {
 	slug := c.FormValue("slug")
 	description := c.FormValue("description")
 	body := c.FormValue("body")
+	icon, err := c.FormFile("icon")
+
+	// If there was an error parsing the icon, return a bad request error
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "malformed form")
+	}
+
 	// Split the category string by commas and convert it to a slice of strings
 	category := strings.Split(c.FormValue("category"), ",")
 
@@ -263,6 +271,20 @@ func createProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "invalid token")
 	}
 
+	var iconPath string
+
+	if icon != nil {
+
+		// Upload the icon file
+		iconPath, err = files.UploadIconFile(icon)
+
+		// If there was an error uploading the icon, return an internal server error
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to upload icon: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to upload icon")
+		}
+	}
+
 	// Create the project struct
 	project := utils.Project{
 		Title:       title,
@@ -273,6 +295,7 @@ func createProject(c echo.Context) error {
 		Creation:    time.Now(),
 		Updated:     time.Now(),
 		Category:    category,
+		Icon:        &iconPath,
 	}
 
 	// Start a transaction
@@ -280,8 +303,14 @@ func createProject(c echo.Context) error {
 
 	// If there was an error starting the transaction, rollback and return an internal server error
 	if err != nil {
-		tx.Rollback(context.Background())
-		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
+		newErr := tx.Rollback(context.Background())
+
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
+
+		fmt.Fprintf(os.Stderr, "failed to start project transaction: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -290,7 +319,14 @@ func createProject(c echo.Context) error {
 
 	// If there was an error creating the project, rollback and return an internal server error
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
+
 		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
@@ -300,8 +336,14 @@ func createProject(c echo.Context) error {
 
 	// If there was an error committing the transaction, rollback and return an internal server error
 	if err != nil {
-		tx.Rollback(context.Background())
-		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
+
+		fmt.Fprintf(os.Stderr, "failed to write project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -362,7 +404,12 @@ func changeProjectStatus(c echo.Context) error {
 	// Start a transaction
 	tx, err := conn.Db.Begin(context.Background())
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
@@ -370,7 +417,12 @@ func changeProjectStatus(c echo.Context) error {
 	// Update the project status
 	err = conn.UpdateProjectStatus(tx, project.ID, status)
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
@@ -380,7 +432,12 @@ func changeProjectStatus(c echo.Context) error {
 
 	// If the commit failed, rollback and return a 500 error.
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}

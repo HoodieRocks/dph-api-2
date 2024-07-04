@@ -73,7 +73,12 @@ func createUser(c echo.Context) error {
 
 	// Check for errors during the transaction.
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create user: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
 	}
@@ -83,7 +88,12 @@ func createUser(c echo.Context) error {
 
 	// Check for errors during the user creation.
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create user: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
 	}
@@ -93,7 +103,12 @@ func createUser(c echo.Context) error {
 
 	// Check for errors during the commit.
 	if err != nil {
-		tx.Rollback(context.Background())
+		newErr := tx.Rollback(context.Background())
+		
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+		}
 		fmt.Fprintf(os.Stderr, "failed to create user: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
 	}
