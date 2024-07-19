@@ -68,7 +68,7 @@ func startServer(ctx context.Context, wg *sync.WaitGroup) {
 	e.Use(middleware.Secure())
 
 	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "Welcome to the DPH API (go port)")
+		return c.String(http.StatusOK, "Welcome to the DPH API (go recreation)")
 	})
 	e.Static("/files", "./files")
 
