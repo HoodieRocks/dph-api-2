@@ -2,20 +2,12 @@ package db
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"fmt"
-	"os"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	nanoid "github.com/matoous/go-nanoid/v2"
 )
-
-type postgres struct {
-	Db *pgxpool.Pool
-}
 
 var PROJECT_COLUMNS = `id,
 			title,
@@ -31,128 +23,6 @@ var PROJECT_COLUMNS = `id,
 			icon,
 			license,
 			featured_until`
-
-func (pg *postgres) GetUserById(id string) (User, error) {
-	var user User
-
-	var row, err = pg.Db.Query(context.Background(), "SELECT * FROM users WHERE id = $1 LIMIT 1", id)
-
-	if err != nil {
-		return user, err
-	}
-
-	user, err = pgx.CollectOneRow(row, pgx.RowToStructByName[User])
-
-	return user, err
-}
-
-func (pg *postgres) ResetUserToken(id string) error {
-	var user, err = pg.GetUserById(id)
-
-	if err != nil {
-		return err
-	}
-
-	user.Token = generateSecureToken()
-
-	tx, err := pg.Db.Begin(context.Background())
-
-	if err != nil {
-		err = tx.Rollback(context.Background())
-
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err.Error())
-			return err
-		}
-
-		return err
-	}
-
-	err = pg.UpdateUser(tx, user)
-
-	if err != nil {
-		return err
-	}
-
-	err = tx.Commit(context.Background())
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (pg *postgres) GetUserByToken(token string) (User, error) {
-	var user User
-
-	var row, err = pg.Db.Query(context.Background(), "SELECT * FROM users WHERE token = $1 LIMIT 1", token)
-
-	if err != nil {
-		return user, err
-	}
-
-	user, err = pgx.CollectOneRow(row, pgx.RowToStructByName[User])
-
-	return user, err
-}
-
-func (pg *postgres) CheckForUsernameConflict(username string) bool {
-
-	var rowLen = 0
-	var err = pg.Db.QueryRow(context.Background(), `SELECT count(1) FROM users WHERE username = LOWER($1)`, username).Scan(&rowLen)
-
-	return err == pgx.ErrNoRows || rowLen > 0
-}
-
-func (pg *postgres) CreateUser(tx pgx.Tx, user User) error {
-
-	id, _ := nanoid.New(12)
-
-	_, err := tx.Exec(context.Background(),
-		"INSERT INTO users (id, username, role, bio, join_date, password, token) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-		id,
-		user.Username,
-		user.Role,
-		user.Bio,
-		user.JoinDate,
-		user.Password,
-		user.Token)
-	return err
-}
-
-func (pg *postgres) UpdateUser(tx pgx.Tx, user User) error {
-	_, err := tx.Exec(context.Background(),
-		`UPDATE users SET 
-			username = $1, role = $2, bio = $3, join_date = $4, password = $5, token = $6 
-		WHERE id = $7`,
-		user.Username,
-		user.Role,
-		user.Bio,
-		user.JoinDate,
-		user.Password,
-		user.Token,
-		user.ID)
-	return err
-}
-
-func (pg *postgres) GetAllInRole(id string) ([]User, error) {
-
-	var users []User
-	rows, err := pg.Db.Query(context.Background(), `SELECT * FROM users WHERE role = $1`, id)
-
-	if err != nil {
-		return nil, err
-	}
-
-	users, err = pgx.CollectRows(rows, pgx.RowToStructByName[User])
-
-	if err != nil {
-		return nil, err
-	}
-
-	return users, nil
-}
 
 // ! PROJECTS
 
@@ -190,7 +60,7 @@ func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]
 func (pg *postgres) getProjectByX(column string, value string) (Project, error) {
 	var project Project
 
-	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE`+column+`= $1 LIMIT 1`, value)
+	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE `+column+` = $1 LIMIT 1`, value)
 
 	if err != nil {
 		return project, err
@@ -226,7 +96,7 @@ func (pg *postgres) GetRandomProjects(limit int) ([]Project, error) {
 func (pg *postgres) GetAllProjectsByAuthor(authorId string) ([]Project, error) {
 	var project []Project
 
-	var rows, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE author = $1 LIMIT 1`, authorId)
+	var rows, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE author = $1`, authorId)
 
 	if err != nil {
 		return project, err
@@ -326,78 +196,29 @@ func (pg *postgres) UpdateProjectStatus(tx pgx.Tx, projectId string, status stri
 	return err
 }
 
-func (pg *postgres) CreateVersion(tx pgx.Tx, projectId string, version Version) error {
-
-	id, _ := nanoid.New(12)
-
-	_, err := tx.Exec(context.Background(),
-		`INSERT INTO versions (
-			id,
-			title,
-			description,
-			creation,
-			downloads,
-			download_link,
-			version_code,
-			supports,
-			project,
-			rp_download) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		id,
-		version.Title,
-		version.Description,
-		version.Creation,
-		0,
-		version.DownloadLink,
-		version.VersionCode,
-		version.Supports,
-		projectId,
-		version.RpDownload)
+func (pg *postgres) DeleteProject(tx pgx.Tx, projectId string) error {
+	_, err := tx.Exec(context.Background(), `DELETE FROM projects WHERE id = $1 LIMIT 1`, projectId)
 	return err
 }
 
-// ! VERSIONS
-
-func (pg *postgres) GetAllProjectVersions(projectId string) ([]Version, error) {
-	var versions []Version
-
-	var row, err = pg.Db.Query(context.Background(), `SELECT * FROM versions WHERE project = $1`, projectId)
-
-	if err != nil {
-		return versions, err
-	}
-
-	versions, err = pgx.CollectRows(row, pgx.RowToStructByName[Version])
-
-	return versions, err
+func (pg *postgres) FeatureProject(tx pgx.Tx, projectId string, featureUntil time.Duration) error {
+	_, err := tx.Exec(context.Background(), `UPDATE projects SET featured_until = $1 WHERE id = $2`, time.Now().Add(featureUntil), projectId)
+	return err
 }
 
-func (pg *postgres) GetVersionByCreation(projectId string, idx int) (*Version, error) {
-	var row, err = pg.Db.Query(context.Background(), `SELECT * FROM versions WHERE project = $1 ORDER BY creation`, projectId)
+func (pg *postgres) GetFeaturedProjects() ([]Project, error) {
+	var projects []Project
+	var rows, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE featured_until > $1`, time.Now())
 
 	if err != nil {
 		return nil, err
 	}
 
-	versions, err := pgx.CollectRows(row, pgx.RowToStructByName[Version])
+	projects, err = pgx.CollectRows(rows, pgx.RowToStructByName[Project])
 
-	if err != nil || int(idx) > len(versions) {
+	if err != nil {
 		return nil, err
 	}
 
-	return &versions[idx], err
-}
-
-// ! MISC
-
-func (pg *postgres) Ping() error {
-	return pg.Db.Ping(context.Background())
-}
-
-func generateSecureToken() string {
-	b := make([]byte, 64)
-	if _, err := rand.Read(b); err != nil {
-		return ""
-	}
-	return base64.RawURLEncoding.EncodeToString(b)
+	return projects, nil
 }

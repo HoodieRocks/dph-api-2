@@ -3,15 +3,16 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
-	"me/cobble/utils/db"
 	"net/http"
 	"os"
 	"strings"
 
+	"github.com/HoodieRocks/dph-api-2/utils/db"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/gommon/log"
 	"golang.org/x/time/rate"
 )
 
@@ -44,7 +45,7 @@ func IsUserProjectOwner(project db.Project, token *string, validToken bool) (boo
 		if err == pgx.ErrNoRows {
 			return false, echo.NewHTTPError(http.StatusNotFound, "no owner found")
 		}
-		fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+		log.Errorf("failed to fetch project owner: %v\n", err)
 		return false, echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 	}
 
@@ -54,7 +55,7 @@ func IsUserProjectOwner(project db.Project, token *string, validToken bool) (boo
 		if err == pgx.ErrNoRows {
 			return false, echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
 		}
-		fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+		log.Errorf("failed to fetch project owner: %v\n", err)
 		return false, echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 	}
 

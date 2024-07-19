@@ -2,17 +2,17 @@ package routes
 
 import (
 	"context"
-	"fmt"
-	"me/cobble/utils"
-	"me/cobble/utils/db"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/HoodieRocks/dph-api-2/utils"
+	"github.com/HoodieRocks/dph-api-2/utils/db"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/gommon/log"
 )
 
 func getUserRoute(c echo.Context) error {
@@ -27,7 +27,7 @@ func getUserRoute(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusNotFound, "no user found")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to fetch user: %v\n", err)
+		log.Errorf("failed to fetch user: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch user")
 	}
 
@@ -77,10 +77,10 @@ func createUser(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
-		fmt.Fprintf(os.Stderr, "failed to create user: %v\n", err.Error())
+		log.Errorf("failed to create user: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
 	}
 
@@ -92,10 +92,10 @@ func createUser(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
-		fmt.Fprintf(os.Stderr, "failed to create user: %v\n", err.Error())
+		log.Errorf("failed to create user: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
 	}
 
@@ -107,10 +107,10 @@ func createUser(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
-		fmt.Fprintf(os.Stderr, "failed to create user: %v\n", err.Error())
+		log.Errorf("failed to create user: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
 	}
 
@@ -137,7 +137,7 @@ func getSelf(c echo.Context) error {
 	var user, err = conn.GetUserByToken(*token)
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to fetch user: %v\n", err)
+		log.Errorf("failed to fetch user: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch user")
 	}
 
@@ -175,7 +175,7 @@ func getProjectsByUser(c echo.Context) error {
 		var user, err = conn.GetUserByToken(*token)
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to fetch user: %v\n", err)
+			log.Errorf("failed to fetch user: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch user")
 		}
 
@@ -211,7 +211,7 @@ func getStaff(c echo.Context) error {
 	staff, err := conn.GetAllInRole(role)
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to fetch staff: %v\n", err)
+		log.Errorf("failed to fetch staff: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch staff")
 	}
 
@@ -227,5 +227,6 @@ func RegisterUserRoutes(e *echo.Echo) {
 	e.GET("/users/me/logout", logOut, utils.DevRateLimiter(100))
 	e.GET("/users/projects/:id", getProjectsByUser, utils.DevRateLimiter(100))
 	e.GET("/users/staff/:role", getStaff, utils.DevRateLimiter(100))
-	e.POST("/users/create", createUser, utils.DevRateLimiter(10))
+
+	e.POST("/users/create", createUser, utils.DevRateLimiter(1))
 }

@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"me/cobble/routes"
-	"me/cobble/utils/db"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,8 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/HoodieRocks/dph-api-2/routes"
+	"github.com/HoodieRocks/dph-api-2/utils/db"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/gommon/log"
 )
 
 func main() {
@@ -52,6 +54,13 @@ func startServer(ctx context.Context, wg *sync.WaitGroup) {
 
 	var conn = db.EstablishConnection()
 
+	err := conn.Ping()
+
+	if err != nil {
+		log.Errorf("failed to ping database: %v\n", err)
+		return
+	}
+
 	db.CreateTables(conn)
 
 	e.Use(middleware.Gzip())
@@ -79,7 +88,7 @@ func startServer(ctx context.Context, wg *sync.WaitGroup) {
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
 
-	err := e.Shutdown(shutdownCtx)
+	err = e.Shutdown(shutdownCtx)
 	conn.Db.Close()
 	if err != nil {
 		fmt.Printf("Server shutdown error: %s\n", err)

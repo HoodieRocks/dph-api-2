@@ -2,11 +2,11 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/gommon/log"
 )
 
 var (
@@ -20,7 +20,7 @@ func EstablishConnection() *postgres {
 		db, err := pgxpool.New(context.Background(), os.Getenv("POSTGRES_URL"))
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "unable to create connection pool: %v\n", err)
+			log.Errorf("unable to create connection pool: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -35,7 +35,7 @@ func CreateTables(pg *postgres) {
 	tx, err := pg.Db.Begin(context.Background())
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create tables: %v\n", err)
+		log.Errorf("failed to create tables: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -55,11 +55,11 @@ func CreateTables(pg *postgres) {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err)
+			log.Errorf("failed to rollback: %v\n", err)
 			panic(err)
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to create user table: %v\n", err)
+		log.Errorf("failed to create user table: %v\n", err)
 		panic(err)
 	}
 
@@ -84,11 +84,11 @@ func CreateTables(pg *postgres) {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err)
+			log.Errorf("failed to rollback: %v\n", err)
 			panic(err)
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to create project table: %v\n", err)
+		log.Errorf("failed to create project table: %v\n", err)
 		panic(err)
 	}
 
@@ -109,18 +109,18 @@ func CreateTables(pg *postgres) {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback: %v\n", err)
+			log.Errorf("failed to rollback: %v\n", err)
 			panic(err)
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to create version table: %v\n", err)
+		log.Errorf("failed to create version table: %v\n", err)
 		panic(err)
 	}
 
 	err = tx.Commit(context.Background())
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to commit: %v\n", err.Error())
+		log.Errorf("failed to commit: %v\n", err.Error())
 		panic(err)
 	}
 }

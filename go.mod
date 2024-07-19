@@ -1,8 +1,9 @@
-module me/cobble
+module github.com/HoodieRocks/dph-api-2
 
 go 1.22.0
 
 require (
+	github.com/h2non/bimg v1.1.9
 	github.com/jackc/pgx/v5 v5.5.5
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/matoous/go-nanoid/v2 v2.1.0

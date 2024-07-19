@@ -2,19 +2,19 @@ package routes
 
 import (
 	"context"
-	"fmt"
-	d_errors "me/cobble/errors"
-	"me/cobble/utils"
-	"me/cobble/utils/db"
-	files "me/cobble/utils/files"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	d_errors "github.com/HoodieRocks/dph-api-2/errors"
+	"github.com/HoodieRocks/dph-api-2/utils"
+	"github.com/HoodieRocks/dph-api-2/utils/db"
+	files "github.com/HoodieRocks/dph-api-2/utils/files"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/gommon/log"
 )
 
 // getVersionOnProject retrieves a version of a project from the database.
@@ -37,7 +37,7 @@ func getVersionOnProject(c echo.Context) error {
 
 	// If the index is not "latest" and cannot be converted to an integer, return a 400 error.
 	if rawIdx != "latest" && err != nil {
-		fmt.Fprintf(os.Stderr, "failed to fetch version: %v\n", err)
+		log.Errorf("failed to fetch version: %v\n", err)
 		return echo.NewHTTPError(http.StatusBadRequest, "version ID must be a number or latest")
 	}
 
@@ -58,7 +58,7 @@ func getVersionOnProject(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusNotFound, "no project with that id found")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to fetch version parent: %v\n", err)
+		log.Errorf("failed to fetch version parent: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version parent")
 	}
 
@@ -71,7 +71,7 @@ func getVersionOnProject(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusNotFound, "no version found")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to fetch version: %v\n", err)
+		log.Errorf("failed to fetch version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version")
 	}
 
@@ -147,7 +147,7 @@ func createVersion(c echo.Context) error {
 	}
 
 	// Retrieve the resource pack file from the request.
-	rpDownload, _ := c.FormFile("rpDownload")
+	rpDownload, _ := c.FormFile("rp_download")
 
 	// Establish a database connection.
 	conn := db.EstablishConnection()
@@ -170,7 +170,7 @@ func createVersion(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusNotFound, "no project with that id found")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to fetch project: %v\n", err)
+		log.Errorf("failed to fetch project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
@@ -188,7 +188,7 @@ func createVersion(c echo.Context) error {
 	}
 
 	// Upload the version file to the server.
-	downloadLink, err := files.UploadVersionFile(download)
+	downloadLink, err := files.UploadVersionFile(download, project)
 
 	// If the upload failed, return a 400 error.
 	if err != nil {
@@ -201,7 +201,7 @@ func createVersion(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "bad version file extension")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to upload file: %v\n", err)
+		log.Errorf("failed to upload file: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to upload file")
 	}
 
@@ -220,7 +220,7 @@ func createVersion(c echo.Context) error {
 	// If a resource pack file was provided, upload it to the server.
 	if rpDownload != nil {
 
-		rpDownloadLink, err := files.UploadResourcePackFile(rpDownload)
+		rpDownloadLink, err := files.UploadResourcePackFile(rpDownload, project)
 
 		// If the upload failed, return a 400 error.
 		if err != nil {
@@ -233,7 +233,7 @@ func createVersion(c echo.Context) error {
 				return echo.NewHTTPError(http.StatusBadRequest, "bad resource file extension")
 			}
 
-			fmt.Fprintf(os.Stderr, "failed to upload file: %v\n", err)
+			log.Errorf("failed to upload file: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to upload file")
 		}
 
@@ -249,10 +249,10 @@ func createVersion(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
-		fmt.Fprintf(os.Stderr, "failed to create version: %v\n", err)
+		log.Errorf("failed to create version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -264,10 +264,10 @@ func createVersion(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
-		fmt.Fprintf(os.Stderr, "failed to create version: %v\n", err)
+		log.Errorf("failed to create version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -279,10 +279,10 @@ func createVersion(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
-		fmt.Fprintf(os.Stderr, "failed to create version: %v\n", err)
+		log.Errorf("failed to create version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -309,7 +309,7 @@ func listVersions(c echo.Context) error {
 		}
 
 		// If there was an error fetching the project, return a 500 error.
-		fmt.Fprintf(os.Stderr, "failed to fetch version parent: %v\n", err)
+		log.Errorf("failed to fetch version parent: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version parent")
 	}
 
@@ -323,7 +323,7 @@ func listVersions(c echo.Context) error {
 		}
 
 		// If there was an error fetching the versions, return a 500 error.
-		fmt.Fprintf(os.Stderr, "failed to fetch version: %v\n", err)
+		log.Errorf("failed to fetch version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version")
 	}
 
@@ -389,7 +389,7 @@ func downloadVersion(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusNotFound, "no project with that id found")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to fetch version parent: %v\n", err)
+		log.Errorf("failed to fetch version parent: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version parent")
 	}
 
@@ -400,7 +400,7 @@ func downloadVersion(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusNotFound, "no version found")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to fetch version: %v\n", err)
+		log.Errorf("failed to fetch version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version")
 	}
 
@@ -416,7 +416,7 @@ func downloadVersion(c echo.Context) error {
 		if err == pgx.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "no version found")
 		}
-		fmt.Fprintf(os.Stderr, "failed to fetch version: %v\n", err)
+		log.Errorf("failed to fetch version: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version")
 	}
 
@@ -435,11 +435,11 @@ func downloadVersion(c echo.Context) error {
 			newErr := tx.Rollback(context.Background())
 
 			if newErr != nil {
-				fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+				log.Errorf("failed to rollback transaction: %v\n", newErr)
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 			}
 
-			fmt.Fprintf(os.Stderr, "failed to update downloads: %v\n", err)
+			log.Errorf("failed to update downloads: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to update project downloads")
 		}
 

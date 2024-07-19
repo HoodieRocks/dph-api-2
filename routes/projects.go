@@ -2,23 +2,20 @@ package routes
 
 import (
 	"context"
-	"fmt"
-	"me/cobble/utils"
-	"me/cobble/utils/db"
-	"me/cobble/utils/files"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/HoodieRocks/dph-api-2/utils"
+	"github.com/HoodieRocks/dph-api-2/utils/db"
+	"github.com/HoodieRocks/dph-api-2/utils/files"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/gommon/log"
 )
 
-// listProjects retrieves a list of projects from the database based on the provided query parameters.
-// It returns a JSON representation of the projects.
-// If the query parameters are invalid, it returns an internal server error.
 func listProjects(c echo.Context) error {
 	// Define the structure of the search results.
 	type SearchResults struct {
@@ -47,7 +44,7 @@ func listProjects(c echo.Context) error {
 	// Retrieve the projects from the database
 	results, err := conn.ListProjects(limit, offset, "downloads")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to fetch projects: %v\n", err)
+		log.Errorf("failed to fetch projects: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch projects")
 	}
 
@@ -59,13 +56,6 @@ func listProjects(c echo.Context) error {
 	})
 }
 
-// getProjectById retrieves a project from the database based on the provided ID.
-// It checks the project's status and returns the project if it is live,
-// or if the user is the owner of the project and has a valid token.
-// If the project is draft and the user is the owner but does not have a valid token,
-// it returns a forbidden error.
-// If the project is draft and the user is not the owner, it returns a forbidden error.
-// If the project is in an illegal state, it returns an internal server error.
 func getProjectById(c echo.Context) error {
 	// Get the project ID from the URL parameter.
 	id := c.Param("id")
@@ -81,7 +71,7 @@ func getProjectById(c echo.Context) error {
 		if err == pgx.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "no project found")
 		}
-		fmt.Fprintf(os.Stderr, "failed to fetch project: %v\n", err)
+		log.Errorf("failed to fetch project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
@@ -123,7 +113,7 @@ func getProjectById(c echo.Context) error {
 			if err == pgx.ErrNoRows {
 				return echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
 			}
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+			log.Errorf("failed to fetch project owner: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 		}
 
@@ -156,13 +146,6 @@ func randomProject(c echo.Context) error {
 	return c.JSON(http.StatusOK, project)
 }
 
-// getProjectBySlug retrieves a project from the database based on the provided ID.
-// It checks the project's status and returns the project if it is live,
-// or if the user is the owner of the project and has a valid token.
-// If the project is draft and the user is the owner but does not have a valid token,
-// it returns a forbidden error.
-// If the project is draft and the user is not the owner, it returns a forbidden error.
-// If the project is in an illegal state, it returns an internal server error.
 func getProjectBySlug(c echo.Context) error {
 	// Get the project ID from the URL parameter.
 	id := c.Param("slug")
@@ -178,7 +161,7 @@ func getProjectBySlug(c echo.Context) error {
 		if err == pgx.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "no project found")
 		}
-		fmt.Fprintf(os.Stderr, "failed to fetch project: %v\n", err)
+		log.Errorf("failed to fetch project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
@@ -220,7 +203,7 @@ func getProjectBySlug(c echo.Context) error {
 			if err == pgx.ErrNoRows {
 				return echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
 			}
-			fmt.Fprintf(os.Stderr, "failed to fetch project owner: %v\n", err)
+			log.Errorf("failed to fetch project owner: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 		}
 
@@ -237,10 +220,6 @@ func getProjectBySlug(c echo.Context) error {
 	}
 }
 
-// createProject handles the creation of a new project.
-// It expects a form containing the project's title, slug, description, body, and category.
-// It also expects a valid token in the Authorization header.
-// It returns the created project in JSON format.
 func createProject(c echo.Context) error {
 	// Get the token from the Authorization header
 	rawToken := c.Request().Header.Get("Authorization")
@@ -292,11 +271,20 @@ func createProject(c echo.Context) error {
 	if icon != nil {
 
 		// Upload the icon file
-		iconPath, err = files.UploadIconFile(icon)
+		iconPath, err = files.UploadIconFile(icon, db.Project{
+			Title:       title,
+			Slug:        slug,
+			Author:      user.ID,
+			Description: description,
+			Body:        body,
+			Creation:    time.Now(),
+			Updated:     time.Now(),
+			Category:    category,
+		})
 
 		// If there was an error uploading the icon, return an internal server error
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to upload icon: %v\n", err)
+			log.Errorf("failed to upload icon: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to upload icon")
 		}
 	}
@@ -322,11 +310,11 @@ func createProject(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to start project transaction: %v\n", err)
+		log.Errorf("failed to start project transaction: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -338,11 +326,11 @@ func createProject(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
+		log.Errorf("failed to create project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -354,11 +342,11 @@ func createProject(c echo.Context) error {
 		newErr := tx.Rollback(context.Background())
 
 		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
 
-		fmt.Fprintf(os.Stderr, "failed to write project: %v\n", err)
+		log.Errorf("failed to write project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
@@ -366,107 +354,83 @@ func createProject(c echo.Context) error {
 	return c.JSON(http.StatusOK, project)
 }
 
-// changeProjectStatus handles the request to change the status of a project.
-// It expects an ID and a status in the request parameters and a valid token in the authorization header.
-// Only users with the role "moderator" or "admin" are allowed to change the project status.
-//
-// This function returns an HTTP error if the token is invalid or the user does not have permission,
-// or if the project is not found.
-// It returns a success message if the status is successfully updated.
-func changeProjectStatus(c echo.Context) error {
-	// Get the project ID and status from the request parameters
-	id := c.Param("id")
-	status := c.FormValue("status")
+func updateProject(c echo.Context) error {
 
-	if status == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "missing status")
-	}
+	var pid = c.Param("id")
 
-	// Establish a connection to the database
-	conn := db.EstablishConnection()
+	// Establish a connection to the database.
+	var conn = db.EstablishConnection()
 
-	// Get the token from the authorization header
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
+	// Get the project from the database.
+	project, err := conn.GetProjectBySlug(pid)
 
-	// Validate the token
-	validToken, token := utils.ValidateToken(rawToken)
-	if !validToken || token == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
-	}
-
-	// Get the moderator or admin user from the token
-	mod, err := conn.GetUserByToken(*token)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return echo.NewHTTPError(http.StatusForbidden, "invalid token")
-		}
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch privileged user information")
-	}
-
-	// Check if the user has permission to change the project status
-	if mod.Role != "moderator" && mod.Role != "admin" {
-		return echo.NewHTTPError(http.StatusForbidden, "you do not have permission to change the project status")
-	}
-
-	// Get the project with the given ID
-	project, err := conn.GetProjectByID(id)
+	// If there was an error fetching the project, return an appropriate error.
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "no project found")
 		}
+		log.Errorf("failed to fetch project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
-	// Start a transaction
+	// Get the token from the request headers.
+	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
+	validToken, token := utils.ValidateToken(rawToken)
+
+	// If the token is invalid, return a forbidden error.
+	if !validToken {
+		return echo.NewHTTPError(http.StatusForbidden, "invalid token")
+	}
+
+	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+	if err != nil {
+		log.Errorf("failed to fetch project owner: %v\n", err)
+		return echo.NewHTTPError(http.StatusForbidden, "failed to fetch project owner")
+	}
+
+	if !isOwner {
+		return echo.NewHTTPError(http.StatusForbidden, "not authorized")
+	}
+
 	tx, err := conn.Db.Begin(context.Background())
-	if err != nil {
-		newErr := tx.Rollback(context.Background())
 
-		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
-		}
-		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
+	if err != nil {
+		log.Errorf("failed to initialise transaction: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
-	// Update the project status
-	err = conn.UpdateProjectStatus(tx, project.ID, status)
-	if err != nil {
-		newErr := tx.Rollback(context.Background())
+	if project.Status == "live" {
+		err = conn.UpdateProjectStatus(tx, project.ID, "draft")
 
-		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
+		if err != nil {
+			newErr := tx.Rollback(context.Background())
+
+			if newErr != nil {
+				log.Errorf("failed to rollback transaction: %v\n", newErr)
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+			}
+			log.Errorf("failed to update project: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to update project")
+		}
+
+		err = tx.Commit(context.Background())
+
+		if err != nil {
+			newErr := tx.Rollback(context.Background())
+
+			if newErr != nil {
+				log.Errorf("failed to rollback transaction: %v\n", newErr)
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
+			}
+			log.Errorf("failed to commit transaction: %v\n", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 		}
-		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
-	// Commit the transaction
-	err = tx.Commit(context.Background())
-
-	// If the commit failed, rollback and return a 500 error.
-	if err != nil {
-		newErr := tx.Rollback(context.Background())
-
-		if newErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to rollback transaction: %v\n", newErr)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
-		}
-		fmt.Fprintf(os.Stderr, "failed to create project: %v\n", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
-	}
-
-	// Return a success message
-	return c.String(http.StatusOK, "status updated")
+	return c.JSON(http.StatusOK, project)
 }
 
-// ftsSearch handles the FTS search API endpoint.
-// It searches for projects using the full-text search index.
-//
-// It expects a "q" query parameter, which is the search query.
-// It returns a SearchResults struct containing the search results.
-// The struct contains the search time, the count of results, and the results themselves.
 func ftsSearch(c echo.Context) error {
 	// Get the search query from the request parameters
 	query := c.QueryParam("q")
@@ -499,7 +463,7 @@ func ftsSearch(c echo.Context) error {
 		}
 
 		// Log and return an error if the search fails
-		fmt.Fprintf(os.Stderr, "failed to search: %v\n", err.Error())
+		log.Errorf("failed to search: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to search")
 	}
 
@@ -508,7 +472,7 @@ func ftsSearch(c echo.Context) error {
 
 	// Handle errors during the search result collection
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to collect search: %v\n", err.Error())
+		log.Errorf("failed to collect search: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to collect search")
 	}
 
@@ -520,9 +484,6 @@ func ftsSearch(c echo.Context) error {
 	})
 }
 
-// search handles the "/projects/search" route and performs a search on the projects table.
-// It takes a query parameter "q" which is used to search for projects.
-// It returns a JSON response with the search results.
 func search(c echo.Context) error {
 	// Get the query parameter from the request.
 	var query = c.QueryParam("q")
@@ -555,7 +516,7 @@ func search(c echo.Context) error {
 		}
 
 		// Log and return an error if the search fails.
-		fmt.Fprintf(os.Stderr, "failed to search: %v\n", err.Error())
+		log.Errorf("failed to search: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to search")
 	}
 
@@ -564,7 +525,7 @@ func search(c echo.Context) error {
 
 	// Handle errors during the search result collection.
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to collect search: %v\n", err.Error())
+		log.Errorf("failed to collect search: %v\n", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to collect search")
 	}
 
@@ -576,6 +537,246 @@ func search(c echo.Context) error {
 	})
 }
 
+func publishProject(c echo.Context) error {
+	var id = c.Param("id")
+	var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
+
+	var conn = db.EstablishConnection()
+
+	validToken, token := utils.ValidateToken(rawToken)
+
+	if !validToken {
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+	}
+
+	project, err := conn.GetProjectByID(id)
+	if err != nil {
+
+		if err == pgx.ErrNoRows {
+			return echo.NewHTTPError(http.StatusNotFound, "no project with that id found")
+		}
+
+		log.Errorf("failed to fetch project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
+	}
+
+	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+	if err != nil {
+		log.Errorf("failed to fetch project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
+	}
+
+	if !isOwner {
+		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	if project.Status == "draft" {
+
+		tx, err := conn.Db.Begin(context.Background())
+
+		if err != nil {
+			log.Errorf("failed to begin transaction: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+		}
+
+		err = conn.UpdateProjectStatus(tx, id, "pending")
+
+		if err != nil {
+			newErr := tx.Rollback(context.Background())
+
+			if newErr != nil {
+				log.Errorf("failed to rollback: %v\n", newErr)
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+			}
+
+			log.Errorf("failed to update project status: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+		}
+
+		if err = tx.Commit(context.Background()); err != nil {
+
+			newErr := tx.Rollback(context.Background())
+
+			if newErr != nil {
+				log.Errorf("failed to rollback: %v\n", newErr)
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+			}
+
+			log.Errorf("failed to commit transaction: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+		}
+
+	} else {
+		return echo.NewHTTPError(http.StatusBadRequest, "project is already published")
+	}
+
+	return c.String(http.StatusOK, "project published")
+}
+
+func draftProject(c echo.Context) error {
+	var id = c.Param("id")
+	var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
+
+	var conn = db.EstablishConnection()
+
+	validToken, token := utils.ValidateToken(rawToken)
+
+	if !validToken {
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+	}
+
+	project, err := conn.GetProjectByID(id)
+	if err != nil {
+
+		if err == pgx.ErrNoRows {
+			return echo.NewHTTPError(http.StatusNotFound, "no project with that id found")
+		}
+
+		log.Errorf("failed to fetch project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
+	}
+
+	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+	if err != nil {
+		log.Errorf("failed to fetch project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
+	}
+
+	if !isOwner {
+		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	if project.Status == "live" || project.Status == "pending" {
+
+		tx, err := conn.Db.Begin(context.Background())
+
+		if err != nil {
+			log.Errorf("failed to begin transaction: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+		}
+
+		err = conn.UpdateProjectStatus(tx, id, "draft")
+
+		if err != nil {
+			newErr := tx.Rollback(context.Background())
+
+			if newErr != nil {
+				log.Errorf("failed to rollback: %v\n", newErr)
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+			}
+
+			log.Errorf("failed to update project status: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+		}
+
+		if err = tx.Commit(context.Background()); err != nil {
+
+			newErr := tx.Rollback(context.Background())
+
+			if newErr != nil {
+				log.Errorf("failed to rollback: %v\n", newErr)
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+			}
+
+			log.Errorf("failed to commit transaction: %v\n", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
+		}
+
+	} else {
+		return echo.NewHTTPError(http.StatusBadRequest, "project is already in draft status")
+	}
+
+	return c.String(http.StatusOK, "project drafted")
+}
+
+func deleteProject(c echo.Context) error {
+
+	var pid = c.Param("id")
+
+	// Establish a connection to the database.
+	var conn = db.EstablishConnection()
+
+	// Get the project from the database.
+	project, err := conn.GetProjectBySlug(pid)
+
+	// If there was an error fetching the project, return an appropriate error.
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return echo.NewHTTPError(http.StatusNotFound, "no project found")
+		}
+		log.Errorf("failed to fetch project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
+	}
+
+	// Get the token from the request headers.
+	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
+	validToken, token := utils.ValidateToken(rawToken)
+
+	// If the token is invalid, return a forbidden error.
+	if !validToken {
+		return echo.NewHTTPError(http.StatusForbidden, "invalid token")
+	}
+
+	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+
+	if err != nil {
+		log.Errorf("failed to fetch project owner: %v\n", err)
+		return echo.NewHTTPError(http.StatusForbidden, "failed to fetch project owner")
+	}
+
+	if !isOwner {
+		return echo.NewHTTPError(http.StatusForbidden, "not authorized")
+	}
+
+	tx, err := conn.Db.Begin(context.Background())
+
+	if err != nil {
+		log.Errorf("failed to begin transaction: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete project")
+	}
+
+	if err = conn.DeleteProject(tx, pid); err != nil {
+		newErr := tx.Rollback(context.Background())
+
+		if newErr != nil {
+			log.Errorf("failed to rollback: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete project")
+		}
+
+		log.Errorf("failed to delete project: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete project")
+	}
+
+	if err = tx.Commit(context.Background()); err != nil {
+		newErr := tx.Rollback(context.Background())
+
+		if newErr != nil {
+			log.Errorf("failed to rollback: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete project")
+		}
+
+		log.Errorf("failed to commit transaction: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete project")
+	}
+
+	return c.String(http.StatusOK, "project deleted")
+}
+
+func featuredProjects(c echo.Context) error {
+	conn := db.EstablishConnection()
+
+	projects, err := conn.GetFeaturedProjects()
+
+	if err != nil {
+		log.Errorf("failed to fetch projects: %v\n", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch projects")
+	}
+
+	return c.JSON(http.StatusOK, projects)
+}
+
 func RegisterProjectRoutes(e *echo.Echo) {
 	e.GET("/projects", listProjects)
 	e.GET("/projects/:id", getProjectById, utils.DevRateLimiter(100))
@@ -583,6 +784,13 @@ func RegisterProjectRoutes(e *echo.Echo) {
 	e.GET("/projects/slug/:slug", getProjectBySlug, utils.DevRateLimiter(100))
 	e.GET("/projects/search/full", ftsSearch)
 	e.GET("/projects/search", search)
+	e.GET("/projects/featured", featuredProjects, utils.DevRateLimiter(100))
+
+	e.PUT("/projects/:id/publish", publishProject, utils.DevRateLimiter(100))
+	e.PUT("/projects/:id/draft", draftProject, utils.DevRateLimiter(100))
+	e.PUT("/projects/:id", updateProject, utils.DevRateLimiter(10))
+
 	e.POST("/projects/create", createProject, utils.DevRateLimiter(10))
-	e.PUT("/projects/:id/status", changeProjectStatus, utils.DevRateLimiter(10))
+
+	e.DELETE("/projects/:id", deleteProject, utils.DevRateLimiter(10))
 }
