@@ -78,10 +78,10 @@ func getVersionOnProject(c echo.Context) error {
 
 	// Check if the project is live or if the project is in draft mode, then check if the user is the project owner.
 	switch project.Status {
-	case "live":
+	case StatusLive:
 		// If the project is live, return the version as JSON.
 		return c.JSON(http.StatusOK, version)
-	case "draft", "pending":
+	case StatusDraft, StatusPending:
 		// Check if the user is the project owner.
 		isOwner, err := IsUserProjectOwner(c, project)
 
