@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	d_errors "github.com/HoodieRocks/dph-api-2/errors"
+	derrors "github.com/HoodieRocks/dph-api-2/errors"
 	"github.com/HoodieRocks/dph-api-2/utils/db"
 
 	"github.com/h2non/bimg"
@@ -25,14 +25,14 @@ func UploadFile(file *multipart.FileHeader, maxSize int64, fileTypes []string, f
 	defer src.Close()
 
 	if file.Size > maxSize {
-		return nil, d_errors.ErrFileTooLarge
+		return nil, derrors.ErrFileTooLarge
 	}
 
 	var splitFileName = strings.Split(file.Filename, ".")
 	var fileExt = strings.ToLower(splitFileName[len(splitFileName)-1])
 
 	if !slices.Contains(fileTypes, fileExt) {
-		return nil, d_errors.ErrFileBadExtension
+		return nil, derrors.ErrFileBadExtension
 	}
 
 	var safeFilename = sanitize.PathName(file.Filename)
@@ -82,7 +82,7 @@ func UploadZipFile(file *multipart.FileHeader, maxSize int64, folder string) (st
 			return "", err
 		}
 
-		return "", d_errors.ErrFileTooLarge
+		return "", derrors.ErrFileTooLarge
 	}
 
 	return "/files/" + folder + "/" + file.Filename, nil
@@ -103,6 +103,8 @@ func UploadIconFile(file *multipart.FileHeader, project db.Project) (string, err
 		return "", err
 	}
 
+	//TODO security hotspot path traversal attack possible?
+	//TODO dot missing?
 	buffer, err := bimg.Read("./files/icons/" + project.Slug + "png")
 
 	if err != nil {

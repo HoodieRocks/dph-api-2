@@ -26,21 +26,15 @@ var PROJECT_COLUMNS = `id,
 
 // ! PROJECTS
 
-func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]Project, error) {
-
-	var trueLimit = limit
-	if trueLimit > 100 {
-		trueLimit = 100
-	}
-
+func (pg *postgres) ListProjects(limit int, offset int, orderBy string) ([]Project, error) {
 	rows, err := pg.Db.Query(context.Background(),
 		`SELECT `+PROJECT_COLUMNS+`
 			FROM projects
 			WHERE status = 'live'
 			ORDER BY $1 ASC
 			LIMIT $2 OFFSET $3`,
-		searchMethod,
-		trueLimit,
+		orderBy,
+		limit,
 		offset)
 
 	if err != nil {
@@ -57,6 +51,7 @@ func (pg *postgres) ListProjects(limit int, offset int, searchMethod string) ([]
 	return projects, err
 }
 
+// TODO security hotspot - column is not safe (if ever allowed to handle user input)
 func (pg *postgres) getProjectByX(column string, value string) (Project, error) {
 	var project Project
 
@@ -77,6 +72,19 @@ func (pg *postgres) GetProjectByID(id string) (Project, error) {
 
 func (pg *postgres) GetProjectBySlug(slug string) (Project, error) {
 	return pg.getProjectByX("slug", slug)
+}
+
+func (pg *postgres) GetProjectByStatus(status string, limit int, offset int) ([]Project, error) {
+	var project []Project
+	var row, err = pg.Db.Query(context.Background(), `SELECT `+PROJECT_COLUMNS+` FROM projects WHERE status = '$1' ORDER BY id LIMIT $2 OFFSET $3`, status, limit, offset)
+
+	if err != nil {
+		return project, err
+	}
+
+	project, err = pgx.CollectRows(row, pgx.RowToStructByName[Project])
+
+	return project, err
 }
 
 func (pg *postgres) GetRandomProjects(limit int) ([]Project, error) {

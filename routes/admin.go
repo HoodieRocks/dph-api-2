@@ -2,6 +2,8 @@ package routes
 
 import (
 	"context"
+	"github.com/HoodieRocks/dph-api-2/auth"
+	"github.com/HoodieRocks/dph-api-2/utils/paging"
 	"net/http"
 	"time"
 
@@ -13,51 +15,16 @@ import (
 	"github.com/labstack/gommon/log"
 )
 
-func adminMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		// Establish a connection to the database
-		conn := db.EstablishConnection()
-
-		// Get the token from the authorization header
-		rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-
-		// Validate the token
-		validToken, token := utils.ValidateToken(rawToken)
-		if !validToken || token == nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
-		}
-
-		mod, err := conn.GetUserByToken(*token)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return echo.NewHTTPError(http.StatusForbidden, "invalid token")
-			}
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch privileged user information")
-		}
-		c.Set("mod", mod)
-		return next(c)
-	}
-}
-
 func listPendingReview(c echo.Context) error {
-	var mod db.User = c.Get("mod").(db.User)
-
-	// Check if the user has permission to change the project status
-	if mod.Role != "moderator" && mod.Role != "admin" {
-		return echo.NewHTTPError(http.StatusForbidden, "you do not have permission to view this")
+	// Parse the query parameters for pagination
+	limit, offset, paginationErr := paging.GetPaginationModel(c)
+	if paginationErr != nil {
+		return paginationErr
 	}
 
 	// Establish a connection to the database
 	conn := db.EstablishConnection()
-
-	rows, err := conn.Db.Query(context.Background(), "SELECT * FROM projects WHERE status = 'pending'")
-
-	if err != nil {
-		log.Errorf("Query failed: %v\n", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch projects")
-	}
-
-	projects, err := pgx.CollectRows(rows, pgx.RowToStructByName[db.Project])
+	projects, err := conn.GetProjectByStatus(StatusPending, limit, offset)
 
 	if err != nil {
 		log.Errorf("Query failed: %v\n", err)
@@ -194,7 +161,10 @@ func featureProject(c echo.Context) error {
 }
 
 func RegisterAdminRoutes(e *echo.Echo) {
-	e.GET("/admin/pending", listPendingReview, adminMiddleware, utils.DevRateLimiter(10))
-	e.PUT("/admin/projects/:id/status", changeProjectStatus, adminMiddleware, utils.DevRateLimiter(10))
-	e.POST("/admin/projects/:id/feature", featureProject, adminMiddleware, utils.DevRateLimiter(1))
+	// main entrypoint guard
+	e.Pre(auth.AllowRoles(auth.AdminRole, auth.ModeratorRole))
+
+	e.GET("/admin/pending", listPendingReview, utils.DevRateLimiter(10))
+	e.PUT("/admin/projects/:id/status", changeProjectStatus, utils.DevRateLimiter(10))
+	e.POST("/admin/projects/:id/feature", featureProject, utils.DevRateLimiter(1))
 }

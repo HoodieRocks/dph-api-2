@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/HoodieRocks/dph-api-2/auth"
 	"net/http"
 	"os"
 	"os/signal"
@@ -66,6 +67,7 @@ func startServer(ctx context.Context, wg *sync.WaitGroup) {
 	e.Use(middleware.Gzip())
 	e.Use(middleware.Decompress())
 	e.Use(middleware.Secure())
+	e.Use(auth.Token2UserContext)
 
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Welcome to the DPH API (go recreation)")

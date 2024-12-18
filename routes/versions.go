@@ -2,12 +2,13 @@ package routes
 
 import (
 	"context"
+	"github.com/HoodieRocks/dph-api-2/auth"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	d_errors "github.com/HoodieRocks/dph-api-2/errors"
+	derrors "github.com/HoodieRocks/dph-api-2/errors"
 	"github.com/HoodieRocks/dph-api-2/utils"
 	"github.com/HoodieRocks/dph-api-2/utils/db"
 	files "github.com/HoodieRocks/dph-api-2/utils/files"
@@ -75,36 +76,14 @@ func getVersionOnProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version")
 	}
 
-	// Retrieve the token from the request header.
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-
-	// Validate the token.
-	validToken, token := utils.ValidateToken(rawToken)
-
 	// Check if the project is live or if the project is in draft mode, then check if the user is the project owner.
 	switch project.Status {
 	case "live":
 		// If the project is live, return the version as JSON.
 		return c.JSON(http.StatusOK, version)
-	case "draft":
+	case "draft", "pending":
 		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
-
-		if err != nil {
-			return err
-		}
-
-		// Check if the user is the project owner.
-		if isOwner {
-			// If the user is the project owner, return the version as JSON.
-			return c.JSON(http.StatusOK, version)
-		} else {
-			// If the user does not have permission to access the project, return a 403 error.
-			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
-		}
-	case "pending":
-		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := IsUserProjectOwner(c, project)
 
 		if err != nil {
 			return err
@@ -130,8 +109,6 @@ func getVersionOnProject(c echo.Context) error {
 // download files. It returns a JSON representation of the created version
 // or an error if any occurred.
 func createVersion(c echo.Context) error {
-	// Retrieve the authorization token from the request header.
-	var rawToken = c.Request().Header.Get("Authorization")
 
 	// Retrieve the project ID and form values from the request.
 	var pid = c.Param("pid")
@@ -152,14 +129,6 @@ func createVersion(c echo.Context) error {
 	// Establish a database connection.
 	conn := db.EstablishConnection()
 
-	// Validate the authorization token.
-	validToken, token := utils.ValidateToken(rawToken)
-
-	// If the token is invalid, return a 400 error.
-	if !validToken || token == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
-	}
-
 	// Retrieve the project from the database using the project ID.
 	project, err := conn.GetProjectByID(pid)
 
@@ -175,10 +144,10 @@ func createVersion(c echo.Context) error {
 	}
 
 	// Retrieve the user from the token.
-	user, err := conn.GetUserByToken(*token)
+	user, err := auth.GetContextUser(c)
 
 	// If the user could not be retrieved, return a 403 error.
-	if err == pgx.ErrNoRows {
+	if err != nil {
 		return echo.NewHTTPError(http.StatusForbidden, "invalid token")
 	}
 
@@ -193,11 +162,11 @@ func createVersion(c echo.Context) error {
 	// If the upload failed, return a 400 error.
 	if err != nil {
 
-		if err == d_errors.ErrFileTooLarge {
+		if err == derrors.ErrFileTooLarge {
 			return echo.NewHTTPError(http.StatusBadRequest, "version file is too big")
 		}
 
-		if err == d_errors.ErrFileBadExtension {
+		if err == derrors.ErrFileBadExtension {
 			return echo.NewHTTPError(http.StatusBadRequest, "bad version file extension")
 		}
 
@@ -225,11 +194,11 @@ func createVersion(c echo.Context) error {
 		// If the upload failed, return a 400 error.
 		if err != nil {
 
-			if err == d_errors.ErrFileTooLarge {
+			if err == derrors.ErrFileTooLarge {
 				return echo.NewHTTPError(http.StatusBadRequest, "resource pack file is too big")
 			}
 
-			if err == d_errors.ErrFileBadExtension {
+			if err == derrors.ErrFileBadExtension {
 				return echo.NewHTTPError(http.StatusBadRequest, "bad resource file extension")
 			}
 
@@ -327,21 +296,14 @@ func listVersions(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version")
 	}
 
-	// Get the token from the request headers.
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-
-	// Validate the token.
-	validToken, token := utils.ValidateToken(rawToken)
-
 	// Check the status of the project.
 	switch project.Status {
-	case "live":
+	case StatusLive:
 		// If the project is live, return the versions.
 		return c.JSON(http.StatusOK, versions)
-
-	case "draft":
+	case StatusDraft, StatusPending:
 		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := IsUserProjectOwner(c, project)
 
 		if err != nil {
 			return err
@@ -352,22 +314,6 @@ func listVersions(c echo.Context) error {
 			return c.JSON(http.StatusOK, versions)
 		} else {
 			// If the user is not the owner, return a 403 error.
-			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
-		}
-	case "pending":
-		// Check if the user is the project owner.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
-
-		if err != nil {
-			return err
-		}
-
-		// Check if the user is the project owner.
-		if isOwner {
-			// If the user is the project owner, return the version as JSON.
-			return c.JSON(http.StatusOK, versions)
-		} else {
-			// If the user does not have permission to access the project, return a 403 error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
 	default:
@@ -404,10 +350,6 @@ func downloadVersion(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch version")
 	}
 
-	// Get the token from the request headers.
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.ValidateToken(rawToken)
-
 	// Get the version from the database.
 	version, err := conn.GetVersionByCreation(pid, idx)
 
@@ -422,7 +364,7 @@ func downloadVersion(c echo.Context) error {
 
 	// Check the status of the project.
 	switch project.Status {
-	case "live":
+	case StatusLive:
 		tx, err := conn.Db.Begin(context.Background())
 
 		if err != nil {
@@ -450,26 +392,9 @@ func downloadVersion(c echo.Context) error {
 		}
 
 		return c.File(version.DownloadLink)
-	case "draft":
-
+	case StatusDraft, StatusPending:
 		// Check if the user is the owner of the project.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
-
-		if err != nil {
-			return err
-		}
-
-		// Check if the user is the owner of the project.
-		if isOwner {
-			return c.File(version.DownloadLink)
-		} else {
-			// If the user is not the owner, return a forbidden error.
-			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
-		}
-	case "pending":
-
-		// Check if the user is the owner of the project.
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+		isOwner, err := IsUserProjectOwner(c, project)
 
 		if err != nil {
 			return err
