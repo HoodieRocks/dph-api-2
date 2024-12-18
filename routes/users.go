@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"github.com/HoodieRocks/dph-api-2/auth"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
 )
+
+const MinPassLen = 8
+const DPHToken = "DPH_TOKEN"
 
 func getUserRoute(c echo.Context) error {
 	var id = c.Param("id")
@@ -37,23 +41,31 @@ func getUserRoute(c echo.Context) error {
 func createUser(c echo.Context) error {
 	// Declare variables for the user and connection.
 	var user db.User
-	var conn = db.EstablishConnection()
 
 	// Retrieve the username and password from the request form values.
 	var username = c.FormValue("username")
 	var password = c.FormValue("password")
 
-	// Check if the username is already taken.
-	var usernameTaken = conn.CheckForUsernameConflict(username)
-
 	// Validate the password length.
-	if len(password) < 8 {
+	//PZ - introduced constant instead of magic-number
+	if len(password) < MinPassLen {
 		return echo.NewHTTPError(http.StatusBadRequest, "password too short!")
 	}
 
 	// Generate an Argon2id hash for the password.
-	var passHash, _ = argon2id.CreateHash(password, argon2id.DefaultParams)
+	var passHash, hashErr = argon2id.CreateHash(password, argon2id.DefaultParams)
 
+	//PZ - handled error in secure generation
+	if hashErr != nil {
+		log.Errorf("failed to generate enough entropy to secure new password hash %v\n", hashErr)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
+	}
+
+	//PZ - moved database operations lower in check, to prevent connection exhaustion
+	// Check if the username is already taken.
+	var conn = db.EstablishConnection()
+
+	var usernameTaken = conn.CheckForUsernameConflict(username)
 	// If the username is not taken, create a new user object.
 	if usernameTaken {
 		// Return an error if the username is already taken.
@@ -66,57 +78,40 @@ func createUser(c echo.Context) error {
 		Bio:      "A new user!",
 		JoinDate: time.Now(),
 		Password: passHash,
-		Token:    utils.GenerateSecureToken(),
+		Token:    auth.GenerateSecureToken(),
 	}
 
 	// Begin a transaction.
 	var tx, err = conn.Db.Begin(context.Background())
 
 	// Check for errors during the transaction.
-	if err != nil {
-		newErr := tx.Rollback(context.Background())
-
-		if newErr != nil {
-			log.Errorf("failed to rollback transaction: %v\n", newErr)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
-		}
-		log.Errorf("failed to create user: %v\n", err.Error())
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
+	err2, failed := handleErrorInTransaction(err, tx)
+	if failed {
+		return err2
 	}
 
 	// Create the user in the database.
 	err = conn.CreateUser(tx, user)
 
 	// Check for errors during the user creation.
-	if err != nil {
-		newErr := tx.Rollback(context.Background())
-
-		if newErr != nil {
-			log.Errorf("failed to rollback transaction: %v\n", newErr)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
-		}
-		log.Errorf("failed to create user: %v\n", err.Error())
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
+	err2, failed = handleErrorInTransaction(err, tx)
+	if failed {
+		return err2
 	}
 
 	// Commit the transaction.
 	err = tx.Commit(context.Background())
 
 	// Check for errors during the commit.
-	if err != nil {
-		newErr := tx.Rollback(context.Background())
-
-		if newErr != nil {
-			log.Errorf("failed to rollback transaction: %v\n", newErr)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
-		}
-		log.Errorf("failed to create user: %v\n", err.Error())
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user")
+	err2, failed = handleErrorInTransaction(err, tx)
+	if failed {
+		return err2
 	}
 
 	// Set a cookie with the user's token.
+	//TODO where are they used?
 	c.SetCookie(&http.Cookie{
-		Name:    "DPH_TOKEN",
+		Name:    DPHToken,
 		Value:   user.Token,
 		Expires: time.Now().AddDate(0, 1, 0),
 	})
@@ -125,28 +120,34 @@ func createUser(c echo.Context) error {
 	return c.JSON(http.StatusCreated, user)
 }
 
-func getSelf(c echo.Context) error {
-	var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
-	var validToken, token = utils.ValidateToken(rawToken)
-
-	if !validToken {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
-	}
-
-	var conn = db.EstablishConnection()
-	var user, err = conn.GetUserByToken(*token)
-
+func handleErrorInTransaction(err error, tx pgx.Tx) (error, bool) {
 	if err != nil {
-		log.Errorf("failed to fetch user: %v\n", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch user")
+		newErr := tx.Rollback(context.Background())
+
+		if newErr != nil {
+			log.Errorf("failed to rollback transaction: %v\n", newErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project"), true
+		}
+		log.Errorf("failed to create user: %v\n", err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create user"), true
+	}
+	return nil, false
+}
+
+func getSelf(c echo.Context) error {
+	user, err := auth.GetContextUser(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "not authenticated")
 	}
 
 	return c.JSON(http.StatusOK, user)
 }
 
 func logOut(c echo.Context) error {
+
+	//TODO rewrite on proper sessions, as this is just like password in cookie, as provides same level of protection
 	c.SetCookie(&http.Cookie{
-		Name:    "DPH_TOKEN",
+		Name:    DPHToken,
 		Value:   "",
 		Expires: time.Now().AddDate(0, 0, -1),
 	})
@@ -164,15 +165,7 @@ func getProjectsByUser(c echo.Context) error {
 	}
 
 	if strings.ToLower(id) == "me" {
-		var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
-		var validToken, token = utils.ValidateToken(rawToken)
-
-		if !validToken {
-			return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
-		}
-
-		var conn = db.EstablishConnection()
-		var user, err = conn.GetUserByToken(*token)
+		var user, err = auth.GetContextUser(c)
 
 		if err != nil {
 			log.Errorf("failed to fetch user: %v\n", err)

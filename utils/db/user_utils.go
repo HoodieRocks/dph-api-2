@@ -2,7 +2,7 @@ package db
 
 import (
 	"context"
-
+	"github.com/HoodieRocks/dph-api-2/utils"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/gommon/log"
 	nanoid "github.com/matoous/go-nanoid/v2"
@@ -29,7 +29,7 @@ func (pg *postgres) ResetUserToken(id string) error {
 		return err
 	}
 
-	user.Token = generateSecureToken()
+	user.Token = utils.GenerateSecureToken()
 
 	tx, err := pg.Db.Begin(context.Background())
 
@@ -78,6 +78,8 @@ func (pg *postgres) CheckForUsernameConflict(username string) bool {
 	var rowLen = 0
 	var err = pg.Db.QueryRow(context.Background(), `SELECT count(1) FROM users WHERE username = LOWER($1)`, username).Scan(&rowLen)
 
+	//TODO ask Con why check for ErrNoRows bcz it is good when true,
+	//but OR is more then 1... isn't is always true???
 	return err == pgx.ErrNoRows || rowLen > 0
 }
 

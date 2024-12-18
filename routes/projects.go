@@ -2,8 +2,9 @@ package routes
 
 import (
 	"context"
+	"github.com/HoodieRocks/dph-api-2/auth"
+	"github.com/HoodieRocks/dph-api-2/utils/paging"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
+)
+
+const (
+	StatusPending = "pending"
+	StatusDraft   = "draft"
+	StatusLive    = "live"
 )
 
 func listProjects(c echo.Context) error {
@@ -28,17 +35,10 @@ func listProjects(c echo.Context) error {
 	var conn = db.EstablishConnection()
 
 	// Parse the query parameters for pagination
-	page, err := strconv.Atoi(c.QueryParam("page"))
-	if err != nil {
-		page = 0
+	limit, offset, paginationErr := paging.GetPaginationModel(c)
+	if paginationErr != nil {
+		return paginationErr
 	}
-
-	limit, err := strconv.Atoi(c.QueryParam("limit"))
-	if err != nil {
-		limit = 25
-	}
-
-	offset := page * limit
 
 	var startTime = time.Now()
 	// Retrieve the projects from the database
@@ -75,17 +75,13 @@ func getProjectById(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
-	// Get the token from the request headers.
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.ValidateToken(rawToken)
-
 	// Check the status of the project.
 	switch project.Status {
-	case "live":
+	case StatusLive:
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
-	case "draft":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+	case StatusDraft:
+		isOwner, err := IsUserProjectOwner(c, project)
 
 		if err != nil {
 			return err
@@ -98,17 +94,14 @@ func getProjectById(c echo.Context) error {
 			// If the user is not the owner, return a forbidden error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
-	case "pending":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+	case StatusPending:
+		isOwner, err := IsUserProjectOwner(c, project)
 
 		if err != nil {
 			return err
 		}
 
-		conn := db.EstablishConnection()
-
-		user, err := conn.GetUserByToken(*token)
-
+		user, err := auth.GetContextUser(c)
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
@@ -117,7 +110,7 @@ func getProjectById(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 		}
 
-		if isOwner || (user.Role == "admin" || user.Role == "moderator") {
+		if isOwner || (user.Role == auth.AdminRole || user.Role == auth.ModeratorRole) {
 			// If the user is the owner, return the project.
 			return c.JSON(http.StatusOK, project)
 		} else {
@@ -131,10 +124,9 @@ func getProjectById(c echo.Context) error {
 }
 
 func randomProject(c echo.Context) error {
-	var limit, err = strconv.Atoi(c.QueryParam("limit"))
-
-	if err != nil {
-		limit = 1
+	limit, _, paginationErr := paging.GetPaginationModel(c)
+	if paginationErr != nil {
+		return paginationErr
 	}
 
 	var conn = db.EstablishConnection()
@@ -165,17 +157,13 @@ func getProjectBySlug(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
-	// Get the token from the request headers.
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.ValidateToken(rawToken)
-
 	// Check the status of the project.
 	switch project.Status {
-	case "live":
+	case StatusLive:
 		// If the project is live, return the project.
 		return c.JSON(http.StatusOK, project)
-	case "draft":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+	case StatusDraft:
+		isOwner, err := IsUserProjectOwner(c, project)
 
 		if err != nil {
 			return err
@@ -188,17 +176,14 @@ func getProjectBySlug(c echo.Context) error {
 			// If the user is not the owner, return a forbidden error.
 			return echo.NewHTTPError(http.StatusForbidden, "you can not access other's private projects")
 		}
-	case "pending":
-		isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+	case StatusPending:
+		isOwner, err := IsUserProjectOwner(c, project)
 
 		if err != nil {
 			return err
 		}
 
-		conn := db.EstablishConnection()
-
-		user, err := conn.GetUserByToken(*token)
-
+		user, err := auth.GetContextUser(c)
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return echo.NewHTTPError(http.StatusNotFound, "no user is assigned to this token")
@@ -207,7 +192,7 @@ func getProjectBySlug(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project owner")
 		}
 
-		if isOwner || (user.Role == "admin" || user.Role == "moderator") {
+		if isOwner || (user.Role == auth.AdminRole || user.Role == auth.ModeratorRole) {
 			// If the user is the owner, return the project.
 			return c.JSON(http.StatusOK, project)
 		} else {
@@ -221,8 +206,6 @@ func getProjectBySlug(c echo.Context) error {
 }
 
 func createProject(c echo.Context) error {
-	// Get the token from the Authorization header
-	rawToken := c.Request().Header.Get("Authorization")
 
 	// Get the form values
 	title := c.FormValue("title")
@@ -242,14 +225,6 @@ func createProject(c echo.Context) error {
 	// Establish a connection to the database
 	conn := db.EstablishConnection()
 
-	// Validate the token
-	validToken, token := utils.ValidateToken(rawToken)
-
-	// Check if the token is valid
-	if !validToken || token == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "malformed token")
-	}
-
 	// Check if a project with the same title or slug already exists
 	projectTaken := conn.CheckForProjectNameConflict(title, slug)
 
@@ -259,7 +234,7 @@ func createProject(c echo.Context) error {
 	}
 
 	// Get the user associated with the token
-	user, err := conn.GetUserByToken(*token)
+	user, err := auth.GetContextUser(c)
 
 	// If the token is invalid, return a forbidden error
 	if err == pgx.ErrNoRows {
@@ -373,16 +348,7 @@ func updateProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
-	// Get the token from the request headers.
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.ValidateToken(rawToken)
-
-	// If the token is invalid, return a forbidden error.
-	if !validToken {
-		return echo.NewHTTPError(http.StatusForbidden, "invalid token")
-	}
-
-	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+	isOwner, err := IsUserProjectOwner(c, project)
 
 	if err != nil {
 		log.Errorf("failed to fetch project owner: %v\n", err)
@@ -400,8 +366,8 @@ func updateProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create project")
 	}
 
-	if project.Status == "live" {
-		err = conn.UpdateProjectStatus(tx, project.ID, "draft")
+	if project.Status == StatusLive {
+		err = conn.UpdateProjectStatus(tx, project.ID, StatusDraft)
 
 		if err != nil {
 			newErr := tx.Rollback(context.Background())
@@ -539,16 +505,7 @@ func search(c echo.Context) error {
 
 func publishProject(c echo.Context) error {
 	var id = c.Param("id")
-	var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
-
 	var conn = db.EstablishConnection()
-
-	validToken, token := utils.ValidateToken(rawToken)
-
-	if !validToken {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
-	}
-
 	project, err := conn.GetProjectByID(id)
 	if err != nil {
 
@@ -560,7 +517,7 @@ func publishProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
-	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+	isOwner, err := IsUserProjectOwner(c, project)
 
 	if err != nil {
 		log.Errorf("failed to fetch project: %v\n", err)
@@ -571,7 +528,7 @@ func publishProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if project.Status == "draft" {
+	if project.Status == StatusDraft {
 
 		tx, err := conn.Db.Begin(context.Background())
 
@@ -580,7 +537,7 @@ func publishProject(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
 		}
 
-		err = conn.UpdateProjectStatus(tx, id, "pending")
+		err = conn.UpdateProjectStatus(tx, id, StatusPending)
 
 		if err != nil {
 			newErr := tx.Rollback(context.Background())
@@ -616,19 +573,10 @@ func publishProject(c echo.Context) error {
 
 func draftProject(c echo.Context) error {
 	var id = c.Param("id")
-	var rawToken = c.Request().Header.Get(echo.HeaderAuthorization)
-
 	var conn = db.EstablishConnection()
-
-	validToken, token := utils.ValidateToken(rawToken)
-
-	if !validToken {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
-	}
 
 	project, err := conn.GetProjectByID(id)
 	if err != nil {
-
 		if err == pgx.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "no project with that id found")
 		}
@@ -637,8 +585,7 @@ func draftProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
-	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
-
+	isOwner, err := IsUserProjectOwner(c, project)
 	if err != nil {
 		log.Errorf("failed to fetch project: %v\n", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
@@ -648,7 +595,7 @@ func draftProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if project.Status == "live" || project.Status == "pending" {
+	if project.Status == StatusLive || project.Status == StatusPending {
 
 		tx, err := conn.Db.Begin(context.Background())
 
@@ -657,7 +604,7 @@ func draftProject(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish project")
 		}
 
-		err = conn.UpdateProjectStatus(tx, id, "draft")
+		err = conn.UpdateProjectStatus(tx, id, StatusDraft)
 
 		if err != nil {
 			newErr := tx.Rollback(context.Background())
@@ -710,16 +657,7 @@ func deleteProject(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch project")
 	}
 
-	// Get the token from the request headers.
-	rawToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	validToken, token := utils.ValidateToken(rawToken)
-
-	// If the token is invalid, return a forbidden error.
-	if !validToken {
-		return echo.NewHTTPError(http.StatusForbidden, "invalid token")
-	}
-
-	isOwner, err := utils.IsUserProjectOwner(project, token, validToken)
+	isOwner, err := IsUserProjectOwner(c, project)
 
 	if err != nil {
 		log.Errorf("failed to fetch project owner: %v\n", err)
@@ -793,4 +731,13 @@ func RegisterProjectRoutes(e *echo.Echo) {
 	e.POST("/projects/create", createProject, utils.DevRateLimiter(10))
 
 	e.DELETE("/projects/:id", deleteProject, utils.DevRateLimiter(10))
+}
+
+func IsUserProjectOwner(c echo.Context, project db.Project) (bool, error) {
+	user, contextError := auth.GetContextUser(c)
+	if contextError != nil {
+		return false, echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	return project.Author == user.ID, nil
 }

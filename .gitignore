@@ -24,3 +24,7 @@ go.work.sum
 .env
 
 /files
+/.idea/vcs.xml
+/.idea/modules.xml
+/.idea/dph-api-2.iml
+/.idea/.gitignore
